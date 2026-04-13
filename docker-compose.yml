@@ -1,0 +1,132 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: callisto
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: dev
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build: .
+    command: >
+      sh -c "alembic upgrade head &&
+             gunicorn -b 0.0.0.0:5309 'callisto.app:create_app()' --reload"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://postgres:dev@postgres:5432/callisto
+      REDIS_URL: redis://redis:6379/0
+      FLASK_APP: callisto.app:create_app
+      FLASK_DEBUG: "1"
+      INGESTION_WS_HOST: ${INGESTION_WS_HOST:-ingestion:5310}
+    ports:
+      - "5309:5309"
+    volumes:
+      - ./src:/app/src
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  ingestion:
+    build: .
+    command: python -m callisto.ingestion.server
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://postgres:dev@postgres:5432/callisto
+      REDIS_URL: redis://redis:6379/0
+      RECORDINGS_DIR: /tmp/callisto_recordings
+    ports:
+      - "5310:5310"
+    volumes:
+      - ./src:/app/src
+      - recordings:/tmp/callisto_recordings
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  evaluator:
+    build: .
+    command: python -m callisto.evaluator.consumer
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://postgres:dev@postgres:5432/callisto
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ./src:/app/src
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  broadcaster:
+    build: .
+    command: python -m callisto.broadcaster.server
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "5311:5311"
+    volumes:
+      - ./src:/app/src
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: celery -A callisto.celery_app worker -l info -c 4
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://postgres:dev@postgres:5432/callisto
+      REDIS_URL: redis://redis:6379/0
+      WHISPER_MODEL: ${WHISPER_MODEL:-base}
+    volumes:
+      - ./src:/app/src
+      - recordings:/tmp/callisto_recordings
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5308"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    ports:
+      - "5308:5308"
+    environment:
+      VITE_WS_URL: ws://localhost:5311
+
+volumes:
+  pgdata:
+  recordings:
+  frontend_node_modules:

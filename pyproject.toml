@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "callisto"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "flask>=3.1,<4",
+    "sqlalchemy>=2.0,<3",
+    "psycopg2-binary>=2.9,<3",
+    "alembic>=1.14,<2",
+    "flask-sqlalchemy>=3.1,<4",
+    "celery[redis]>=5.4,<6",
+    "redis>=5.0,<6",
+    "gunicorn>=23.0,<24",
+    "requests>=2.31,<3",
+    "openai-whisper>=20240930",
+    "openai>=1.0,<2",
+    "websockets>=14.0,<15",
+    "PyJWT>=2.8,<3",
+    "flask-cors>=5.0,<6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=6.0",
+    "ruff>=0.8",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

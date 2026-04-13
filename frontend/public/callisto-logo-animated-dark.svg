@@ -1,0 +1,139 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="165 48 350 395">
+
+<defs>
+  <clipPath id="moonClip">
+    <circle cx="340" cy="220" r="120"/>
+  </clipPath>
+  <linearGradient id="moonGrad" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#0ea5e9"/>
+    <stop offset="100%" stop-color="#6366f1"/>
+  </linearGradient>
+</defs>
+
+<!-- Orbit rings — expand outward -->
+<circle cx="340" cy="220" r="140" fill="none" stroke="#0ea5e9" stroke-width="0.3" opacity="0">
+  <animate attributeName="opacity" from="0" to="0.3" begin="1.2s" dur="0.8s" fill="freeze"/>
+  <animate attributeName="r" from="0" to="140" begin="1.2s" dur="0.8s" fill="freeze" calcMode="spline" keySplines="0.25 0.1 0.25 1"/>
+</circle>
+<circle cx="340" cy="220" r="155" fill="none" stroke="#6366f1" stroke-width="0.3" opacity="0">
+  <animate attributeName="opacity" from="0" to="0.2" begin="1.4s" dur="0.8s" fill="freeze"/>
+  <animate attributeName="r" from="0" to="155" begin="1.4s" dur="0.8s" fill="freeze" calcMode="spline" keySplines="0.25 0.1 0.25 1"/>
+</circle>
+<circle cx="340" cy="220" r="170" fill="none" stroke="#6366f1" stroke-width="0.3" opacity="0">
+  <animate attributeName="opacity" from="0" to="0.1" begin="1.6s" dur="0.8s" fill="freeze"/>
+  <animate attributeName="r" from="0" to="170" begin="1.6s" dur="0.8s" fill="freeze" calcMode="spline" keySplines="0.25 0.1 0.25 1"/>
+</circle>
+
+<!-- Moon body — scales in -->
+<circle cx="340" cy="220" r="120" fill="url(#moonGrad)" opacity="0">
+  <animate attributeName="opacity" from="0" to="0.9" begin="0.2s" dur="0.6s" fill="freeze"/>
+  <animate attributeName="r" from="0" to="120" begin="0.2s" dur="0.8s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+</circle>
+
+<!-- Shadow — slides in from right -->
+<circle cx="420" cy="220" r="95" fill="#0c0e13" opacity="0">
+  <animate attributeName="opacity" from="0" to="0.85" begin="0.6s" dur="0.4s" fill="freeze"/>
+  <animate attributeName="cx" from="420" to="380" begin="0.6s" dur="0.8s" fill="freeze" calcMode="spline" keySplines="0.25 0.1 0.25 1"/>
+</circle>
+
+<!-- Craters — fade in -->
+<g clip-path="url(#moonClip)" opacity="0">
+  <animate attributeName="opacity" from="0" to="0.25" begin="1.0s" dur="0.6s" fill="freeze"/>
+  <circle cx="290" cy="180" r="12" fill="#e0f2fe" opacity="0.3"/>
+  <circle cx="270" cy="250" r="8" fill="#e0f2fe" opacity="0.2"/>
+  <circle cx="310" cy="290" r="6" fill="#e0f2fe" opacity="0.25"/>
+  <circle cx="260" cy="210" r="4" fill="#e0f2fe" opacity="0.15"/>
+  <circle cx="300" cy="230" r="3" fill="#e0f2fe" opacity="0.2"/>
+  <circle cx="280" cy="170" r="5" fill="#e0f2fe" opacity="0.15"/>
+  <circle cx="250" cy="260" r="3" fill="#e0f2fe" opacity="0.2"/>
+</g>
+
+<!-- Waveform bars — grow from center, staggered -->
+<g transform="translate(340 220)" opacity="0">
+  <animate attributeName="opacity" from="0" to="0.9" begin="1.4s" dur="0.4s" fill="freeze"/>
+
+  <rect x="-45" y="0" width="3" height="0" rx="1.5" fill="#e0f2fe" opacity="0.6">
+    <animate attributeName="y" from="0" to="-8" begin="1.4s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+    <animate attributeName="height" from="0" to="16" begin="1.4s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+  </rect>
+  <rect x="-38" y="0" width="3" height="0" rx="1.5" fill="#e0f2fe" opacity="0.7">
+    <animate attributeName="y" from="0" to="-18" begin="1.45s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+    <animate attributeName="height" from="0" to="36" begin="1.45s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+  </rect>
+  <rect x="-31" y="0" width="3" height="0" rx="1.5" fill="#e0f2fe" opacity="0.8">
+    <animate attributeName="y" from="0" to="-28" begin="1.5s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+    <animate attributeName="height" from="0" to="56" begin="1.5s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+  </rect>
+  <rect x="-24" y="0" width="3" height="0" rx="1.5" fill="#e0f2fe" opacity="0.9">
+    <animate attributeName="y" from="0" to="-38" begin="1.55s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+    <animate attributeName="height" from="0" to="76" begin="1.55s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+  </rect>
+  <rect x="-17" y="0" width="3" height="0" rx="1.5" fill="#e0f2fe" opacity="0.85">
+    <animate attributeName="y" from="0" to="-22" begin="1.6s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+    <animate attributeName="height" from="0" to="44" begin="1.6s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+  </rect>
+  <rect x="-10" y="0" width="3" height="0" rx="1.5" fill="#e0f2fe">
+    <animate attributeName="y" from="0" to="-32" begin="1.65s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+    <animate attributeName="height" from="0" to="64" begin="1.65s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+  </rect>
+  <rect x="-3" y="0" width="3" height="0" rx="1.5" fill="#e0f2fe" opacity="0.7">
+    <animate attributeName="y" from="0" to="-12" begin="1.7s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+    <animate attributeName="height" from="0" to="24" begin="1.7s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+  </rect>
+  <rect x="4" y="0" width="3" height="0" rx="1.5" fill="#e0f2fe" opacity="0.85">
+    <animate attributeName="y" from="0" to="-26" begin="1.75s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+    <animate attributeName="height" from="0" to="52" begin="1.75s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+  </rect>
+  <rect x="11" y="0" width="3" height="0" rx="1.5" fill="#e0f2fe" opacity="0.95">
+    <animate attributeName="y" from="0" to="-40" begin="1.8s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+    <animate attributeName="height" from="0" to="80" begin="1.8s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+  </rect>
+  <rect x="18" y="0" width="3" height="0" rx="1.5" fill="#e0f2fe" opacity="0.75">
+    <animate attributeName="y" from="0" to="-20" begin="1.85s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+    <animate attributeName="height" from="0" to="40" begin="1.85s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+  </rect>
+  <rect x="25" y="0" width="3" height="0" rx="1.5" fill="#e0f2fe" opacity="0.8">
+    <animate attributeName="y" from="0" to="-30" begin="1.9s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+    <animate attributeName="height" from="0" to="60" begin="1.9s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+  </rect>
+  <rect x="32" y="0" width="3" height="0" rx="1.5" fill="#e0f2fe" opacity="0.65">
+    <animate attributeName="y" from="0" to="-14" begin="1.95s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+    <animate attributeName="height" from="0" to="28" begin="1.95s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+  </rect>
+  <rect x="39" y="0" width="3" height="0" rx="1.5" fill="#e0f2fe" opacity="0.5">
+    <animate attributeName="y" from="0" to="-6" begin="2.0s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+    <animate attributeName="height" from="0" to="12" begin="2.0s" dur="0.5s" fill="freeze" calcMode="spline" keySplines="0.16 1 0.3 1"/>
+  </rect>
+</g>
+
+<!-- Orbiting dots — fade in then orbit -->
+<g transform="translate(340 220)">
+  <circle r="4" fill="#38bdf8" opacity="0">
+    <animate attributeName="opacity" from="0" to="0.8" begin="2.2s" dur="0.5s" fill="freeze"/>
+    <animateMotion dur="20s" begin="2.2s" repeatCount="indefinite" path="M0,-135 A135,135 0 0,1 0,135 A135,135 0 0,1 0,-135 Z"/>
+  </circle>
+  <circle r="2.5" fill="#818cf8" opacity="0">
+    <animate attributeName="opacity" from="0" to="0.6" begin="2.4s" dur="0.5s" fill="freeze"/>
+    <animateMotion dur="30s" begin="2.4s" repeatCount="indefinite" path="M0,-150 A150,150 0 0,1 0,150 A150,150 0 0,1 0,-150 Z"/>
+  </circle>
+  <circle r="2" fill="#a78bfa" opacity="0">
+    <animate attributeName="opacity" from="0" to="0.4" begin="2.6s" dur="0.5s" fill="freeze"/>
+    <animateMotion dur="40s" begin="2.6s" repeatCount="indefinite" path="M0,-165 A165,165 0 0,1 0,165 A165,165 0 0,1 0,-165 Z"/>
+  </circle>
+</g>
+
+<!-- Wordmark — fades in, slides up -->
+<text x="340" y="420" text-anchor="middle" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="42" font-weight="300" letter-spacing="14" fill="#e0f2fe" opacity="0">
+  <animate attributeName="opacity" from="0" to="1" begin="2.6s" dur="0.6s" fill="freeze"/>
+  <animate attributeName="y" from="420" to="405" begin="2.6s" dur="0.6s" fill="freeze" calcMode="spline" keySplines="0.25 0.1 0.25 1"/>
+  CALLISTO
+</text>
+
+<!-- Subtitle — fades in, slides up -->
+<text x="340" y="448" text-anchor="middle" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" letter-spacing="5" fill="#a78bfa" opacity="0">
+  <animate attributeName="opacity" from="0" to="1" begin="2.9s" dur="0.6s" fill="freeze"/>
+  <animate attributeName="y" from="448" to="435" begin="2.9s" dur="0.6s" fill="freeze" calcMode="spline" keySplines="0.25 0.1 0.25 1"/>
+  TELEPHONY INTELLIGENCE
+</text>
+
+</svg>

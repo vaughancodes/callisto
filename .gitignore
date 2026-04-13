@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+.venv/
+venv/
+
+# Environment
+.env
+
+# Testing / Linting
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Database
+*.sqlite3
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.log
+
+# Recordings (audio files from calls)
+*.wav
+*.mp3
+
+# Celery
+celerybeat-schedule
+celerybeat-schedule.db

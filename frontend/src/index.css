@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+@theme {
+  /* Accent colors (same in both modes — interactive elements only) */
+  --color-brand-sky: #0ea5e9;
+  --color-brand-indigo: #6366f1;
+  --color-accent-light: #38bdf8;
+  --color-accent-periwinkle: #818cf8;
+  --color-accent-lavender: #a78bfa;
+
+  /* Semantic colors (same in both modes) */
+  --color-success: #4ade80;
+  --color-warning: #fbbf24;
+  --color-danger: #f87171;
+  --color-info: #38bdf8;
+
+  /* Static refs */
+  --color-surface-dark: #0c0e13;
+  --color-surface-elevated: #13161d;
+  --color-text-ice: #e0f2fe;
+  --color-text-dark: #0c0e13;
+
+  /* Theme-aware tokens — light mode */
+  --color-page-bg: #ffffff;
+  --color-page-bg-secondary: #f8fafc;
+  --color-page-bg-tertiary: #f1f5f9;
+  --color-card-bg: #f8fafc;
+  --color-card-border: #e2e8f0;
+  --color-card-border-hover: #cbd5e1;
+  --color-page-text: #0f172a;
+  --color-page-text-secondary: #475569;
+  --color-page-text-muted: #94a3b8;
+  --color-page-divider: #e2e8f0;
+  --color-page-hover: #f1f5f9;
+}
+
+.dark {
+  --color-page-bg: #0c0e13;
+  --color-page-bg-secondary: #13161d;
+  --color-page-bg-tertiary: #1a1e28;
+  --color-card-bg: #13161d;
+  --color-card-border: #252a36;
+  --color-card-border-hover: #333338;
+  --color-page-text: #c9d1d9;
+  --color-page-text-secondary: #94a3b8;
+  --color-page-text-muted: #64748b;
+  --color-page-divider: #252a36;
+  --color-page-hover: #1a1e28;
+}
