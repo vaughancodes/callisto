@@ -1,5 +1,6 @@
 <p align="center">
-  <img src="frontend/public/callisto-logo-light.svg" alt="Callisto" height="120">
+  <img src="frontend/public/callisto-icon-animated.svg" alt="" height="180">
+  <img src="frontend/public/callisto-wordmark-dark.svg" alt="Callisto" height="120">
 </p>
 
 <p align="center">
@@ -229,4 +230,6 @@ callisto/
 
 ## License
 
-Proprietary. All rights reserved.
+Copyright © 2026 Vaughan.Codes (Daniel Vaughan). All rights reserved.
+
+See [LICENSE](LICENSE) for details.
