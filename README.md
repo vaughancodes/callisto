@@ -1,6 +1,7 @@
 <p align="center">
-  <img src="frontend/public/callisto-icon-animated.svg" alt="" height="120">
-  <img src="frontend/public/callisto-wordmark-dark.svg" alt="Callisto" height="100">
+  <img src="frontend/public/callisto-icon-animated.svg" alt="" height="120" align="middle">
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="frontend/public/callisto-wordmark-dark.svg" alt="Callisto" height="100" align="middle">
 </p>
 
 <p align="center">
