@@ -228,13 +228,13 @@ export function ContactsPage() {
                   <td className="p-4 flex gap-2">
                     <button
                       onClick={() => { setEditing(c); setShowForm(true); }}
-                      className="text-xs text-brand-sky hover:underline"
+                      className="text-xs px-2.5 py-1 border border-brand-sky text-brand-sky rounded-md hover:bg-brand-sky/10 transition-colors"
                     >
                       Edit
                     </button>
                     <button
                       onClick={() => deleteMutation.mutate(c.id)}
-                      className="text-xs text-danger hover:underline"
+                      className="text-xs px-2.5 py-1 border border-danger text-danger rounded-md hover:bg-danger/10 transition-colors"
                     >
                       Delete
                     </button>

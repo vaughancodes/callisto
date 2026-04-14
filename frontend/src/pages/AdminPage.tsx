@@ -136,7 +136,7 @@ export function AdminPage() {
                   <td className="p-4">
                     <button
                       onClick={() => setDeletingTenant(t)}
-                      className="text-xs text-danger hover:underline"
+                      className="text-xs px-2.5 py-1 border border-danger text-danger rounded-md hover:bg-danger/10 transition-colors"
                     >
                       Delete
                     </button>
@@ -194,7 +194,7 @@ export function AdminPage() {
                   <td className="p-4 flex gap-2">
                     <button
                       onClick={() => setAssigningUser(u)}
-                      className="text-xs text-brand-sky hover:underline"
+                      className="text-xs px-2.5 py-1 border border-brand-sky text-brand-sky rounded-md hover:bg-brand-sky/10 transition-colors"
                     >
                       Assign Tenant
                     </button>
@@ -205,13 +205,13 @@ export function AdminPage() {
                           is_superadmin: !u.is_superadmin,
                         })
                       }
-                      className="text-xs text-purple-600 hover:underline"
+                      className="text-xs px-2.5 py-1 border border-accent-lavender text-accent-lavender rounded-md hover:bg-accent-lavender/10 transition-colors"
                     >
                       {u.is_superadmin ? "Remove Admin" : "Make Admin"}
                     </button>
                     <button
                       onClick={() => deleteUser.mutate(u.id)}
-                      className="text-xs text-danger hover:underline"
+                      className="text-xs px-2.5 py-1 border border-danger text-danger rounded-md hover:bg-danger/10 transition-colors"
                     >
                       <Trash2 className="w-3 h-3" />
                     </button>

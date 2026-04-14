@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
+import { HelpTooltip } from "../components/HelpTooltip";
 import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { apiFetch } from "../lib/api";
@@ -27,6 +28,9 @@ export function TemplatesPage() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Template | null>(null);
+  // Defaults used to pre-fill the form (separate from `editing` so we can
+  // create a new template from an existing one without editing it in place).
+  const [formDefaults, setFormDefaults] = useState<Template | null>(null);
 
   const { data: templates, isLoading } = useQuery({
     queryKey: ["templates", tenant?.id],
@@ -86,14 +90,23 @@ export function TemplatesPage() {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-page-text">Insight Templates</h2>
+      <div className="flex items-start justify-between gap-6 mb-6">
+        <div className="max-w-2xl">
+          <h2 className="text-2xl font-bold text-page-text">Insight Templates</h2>
+          <p className="text-sm text-page-text-secondary mt-2">
+            Templates define what Callisto looks for in calls. Each one is a
+            natural-language rule the LLM evaluates against the transcript —
+            things like follow-up requests, questions about pricing, or
+            mentions of a specific topic.
+          </p>
+        </div>
         <button
           onClick={() => {
             setEditing(null);
+            setFormDefaults(null);
             setShowForm(true);
           }}
-          className="flex items-center gap-2 px-4 py-2 bg-brand-sky text-white rounded-lg hover:bg-brand-sky/80 transition-colors text-sm"
+          className="flex items-center gap-2 px-4 py-2 bg-brand-sky text-white rounded-lg hover:bg-brand-sky/80 transition-colors text-sm shrink-0"
         >
           <Plus className="w-4 h-4" />
           New Template
@@ -150,15 +163,29 @@ export function TemplatesPage() {
                       <button
                         onClick={() => {
                           setEditing(t);
+                          setFormDefaults(t);
                           setShowForm(true);
                         }}
-                        className="text-xs text-brand-sky hover:underline"
+                        className="text-xs px-2.5 py-1 border border-brand-sky text-brand-sky rounded-md hover:bg-brand-sky/10 transition-colors"
                       >
                         Edit
                       </button>
                       <button
+                        onClick={() => {
+                          setEditing(null);
+                          setFormDefaults({
+                            ...t,
+                            name: `${t.name} (copy)`,
+                          });
+                          setShowForm(true);
+                        }}
+                        className="text-xs px-2.5 py-1 border border-brand-sky text-brand-sky rounded-md hover:bg-brand-sky/10 transition-colors"
+                      >
+                        Duplicate
+                      </button>
+                      <button
                         onClick={() => deleteMutation.mutate(t.id)}
-                        className="text-xs text-danger hover:underline"
+                        className="text-xs px-2.5 py-1 border border-danger text-danger rounded-md hover:bg-danger/10 transition-colors"
                       >
                         Delete
                       </button>
@@ -189,33 +216,47 @@ export function TemplatesPage() {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-page-text mb-1">
+                <label className="flex items-center gap-1.5 text-sm font-medium text-page-text mb-1">
                   Name
+                  <HelpTooltip>
+                    A short, human-readable name for this template (e.g.
+                    "Follow-up Request").
+                  </HelpTooltip>
                 </label>
                 <input
                   name="name"
-                  defaultValue={editing?.name ?? ""}
+                  defaultValue={formDefaults?.name ?? ""}
                   required
                   className="w-full px-3 py-2 border border-card-border rounded-lg text-sm bg-page-bg-tertiary text-page-text"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-page-text mb-1">
+                <label className="flex items-center gap-1.5 text-sm font-medium text-page-text mb-1">
                   Description
+                  <HelpTooltip>
+                    Optional notes for your team about what this template is
+                    for. Not sent to the LLM.
+                  </HelpTooltip>
                 </label>
                 <input
                   name="description"
-                  defaultValue={editing?.description ?? ""}
+                  defaultValue={formDefaults?.description ?? ""}
                   className="w-full px-3 py-2 border border-card-border rounded-lg text-sm bg-page-bg-tertiary text-page-text"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-page-text mb-1">
+                <label className="flex items-center gap-1.5 text-sm font-medium text-page-text mb-1">
                   Detection Prompt
+                  <HelpTooltip>
+                    The instruction sent to the LLM describing what to
+                    detect. Be specific — e.g. "Detect if the caller asks
+                    for a callback or requests that someone follow up with
+                    them."
+                  </HelpTooltip>
                 </label>
                 <textarea
                   name="prompt"
-                  defaultValue={editing?.prompt ?? ""}
+                  defaultValue={formDefaults?.prompt ?? ""}
                   required
                   rows={3}
                   className="w-full px-3 py-2 border border-card-border rounded-lg text-sm bg-page-bg-tertiary text-page-text"
@@ -223,12 +264,16 @@ export function TemplatesPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-page-text mb-1">
+                  <label className="flex items-center gap-1.5 text-sm font-medium text-page-text mb-1">
                     Category
+                    <HelpTooltip>
+                      A grouping label used for organization and filtering
+                      in analytics.
+                    </HelpTooltip>
                   </label>
                   <select
                     name="category"
-                    defaultValue={editing?.category ?? "custom"}
+                    defaultValue={formDefaults?.category ?? "custom"}
                     className="w-full px-3 py-2 border border-card-border rounded-lg text-sm bg-page-bg-tertiary text-page-text"
                   >
                     {categories.map((c) => (
@@ -239,12 +284,16 @@ export function TemplatesPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-page-text mb-1">
+                  <label className="flex items-center gap-1.5 text-sm font-medium text-page-text mb-1">
                     Severity
+                    <HelpTooltip>
+                      How important a detection is. "Critical" insights
+                      show up as red, "warning" as yellow, "info" as blue.
+                    </HelpTooltip>
                   </label>
                   <select
                     name="severity"
-                    defaultValue={editing?.severity ?? "info"}
+                    defaultValue={formDefaults?.severity ?? "info"}
                     className="w-full px-3 py-2 border border-card-border rounded-lg text-sm bg-page-bg-tertiary text-page-text"
                   >
                     {severities.map((s) => (
@@ -255,16 +304,25 @@ export function TemplatesPage() {
                   </select>
                 </div>
               </div>
-              <label className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  name="is_realtime"
-                  defaultChecked={editing?.is_realtime ?? true}
-                />
-                <span className="text-sm text-page-text">
-                  Evaluate in real-time
-                </span>
-              </label>
+              <div>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    name="is_realtime"
+                    defaultChecked={formDefaults?.is_realtime ?? true}
+                  />
+                  <span className="flex items-center gap-1.5 text-sm text-page-text">
+                    Evaluate in real-time
+                    <HelpTooltip>
+                      <>
+                        Enabled: fires during the live call.
+                        <br />
+                        Disabled: evaluated during the post-call analysis.
+                      </>
+                    </HelpTooltip>
+                  </span>
+                </label>
+              </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"

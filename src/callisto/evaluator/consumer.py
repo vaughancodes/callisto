@@ -43,6 +43,7 @@ class InsightEvaluator:
         )
         self.windows: dict[str, SlidingWindow] = {}
         self.templates_cache: dict[str, list[dict]] = {}  # tenant_id -> templates
+        self.context_cache: dict[str, str | None] = {}  # tenant_id -> tenant.context
         self.call_id_cache: dict[str, str] = {}  # external_id (call SID) -> db UUID
         # Track which templates have already fired per call to avoid duplicates.
         # Key: (call_id, template_id) -> last evidence string
@@ -188,7 +189,8 @@ class InsightEvaluator:
         if not window_text.strip():
             return
 
-        detected = await self._evaluate_window(window_text, templates)
+        context = self.context_cache.get(tenant_id)
+        detected = await self._evaluate_window(window_text, templates, context)
 
         db_call_id = self._resolve_call_id(call_id)
         if not db_call_id:
@@ -266,15 +268,21 @@ class InsightEvaluator:
         return None
 
     async def _get_templates(self, tenant_id: str) -> list[dict]:
-        """Load active realtime templates for a tenant, with caching."""
+        """Load active realtime templates for a tenant, with caching.
+        Also caches the tenant's context string.
+        """
         if tenant_id in self.templates_cache:
             return self.templates_cache[tenant_id]
 
         from callisto.app import create_app
-        from callisto.models import InsightTemplate
+        from callisto.extensions import db
+        from callisto.models import InsightTemplate, Tenant
 
         app = create_app()
         with app.app_context():
+            tenant = db.session.get(Tenant, tenant_id)
+            self.context_cache[tenant_id] = tenant.context if tenant else None
+
             templates = InsightTemplate.query.filter_by(
                 tenant_id=tenant_id, active=True, is_realtime=True
             ).all()
@@ -293,7 +301,12 @@ class InsightEvaluator:
         self.templates_cache[tenant_id] = result
         return result
 
-    async def _evaluate_window(self, window_text: str, templates: list[dict]) -> list[dict]:
+    async def _evaluate_window(
+        self,
+        window_text: str,
+        templates: list[dict],
+        context: str | None = None,
+    ) -> list[dict]:
         """Run LLM evaluation on the current window text."""
         template_descriptions = "\n".join(
             f"- Template ID: {t['id']}\n"
@@ -303,9 +316,19 @@ class InsightEvaluator:
             for t in templates
         )
 
+        context_section = ""
+        if context and context.strip():
+            context_section = f"""## Business Context
+
+Analyze the call through the lens of the following context about the business and the types of calls they typically handle:
+
+{context.strip()}
+
+"""
+
         prompt = f"""You are a real-time call analyst. Evaluate this transcript excerpt against the insight templates. This is a LIVE call — only report insights clearly present in the text.
 
-## Templates
+{context_section}## Templates
 {template_descriptions}
 
 ## Transcript (last ~60 seconds)

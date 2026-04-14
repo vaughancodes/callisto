@@ -10,6 +10,7 @@ import { ContactsPage } from "./pages/ContactsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { TemplatesPage } from "./pages/TemplatesPage";
+import { TenantSettingsPage } from "./pages/TenantSettingsPage";
 
 export default function App() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
         <Route path="/contacts" element={<ContactsPage />} />
         <Route path="/contacts/:contactId" element={<ContactDetailPage />} />
         <Route path="/templates" element={<TemplatesPage />} />
+        <Route path="/tenant-settings" element={<TenantSettingsPage />} />
         <Route path="/analytics" element={<AnalyticsPage />} />
         <Route path="/admin" element={<AdminPage />} />
       </Route>

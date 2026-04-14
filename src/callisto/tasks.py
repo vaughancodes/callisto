@@ -158,6 +158,9 @@ def run_deep_analysis(self, pipeline_data: dict):
     if not call:
         raise ValueError(f"Call {call_id} not found")
 
+    tenant_obj = db.session.get(Tenant, tenant_id)
+    tenant_context = tenant_obj.context if tenant_obj else None
+
     templates = InsightTemplate.query.filter_by(
         tenant_id=tenant_id, active=True
     ).all()
@@ -175,9 +178,19 @@ def run_deep_analysis(self, pipeline_data: dict):
         for t in templates
     )
 
+    context_section = ""
+    if tenant_context and tenant_context.strip():
+        context_section = f"""## Business Context
+
+Analyze the call through the lens of the following context about the business and the types of calls they typically handle:
+
+{tenant_context.strip()}
+
+"""
+
     prompt = f"""You are an expert call analyst performing deep post-call analysis. You have access to the COMPLETE call transcript — analyze it holistically for patterns that may only be visible in full context.
 
-## Insight Templates to Evaluate
+{context_section}## Insight Templates to Evaluate
 
 {template_descriptions}
 
@@ -310,9 +323,22 @@ def generate_summary(self, pipeline_data: dict):
     if not call:
         raise ValueError(f"Call {call_id} not found")
 
+    tenant_obj = db.session.get(Tenant, tenant_id)
+    tenant_context = tenant_obj.context if tenant_obj else None
+
+    context_section = ""
+    if tenant_context and tenant_context.strip():
+        context_section = f"""## Business Context
+
+Analyze the call through the lens of the following context:
+
+{tenant_context.strip()}
+
+"""
+
     prompt = f"""Analyze this phone call transcript and produce a structured summary.
 
-## Transcript
+{context_section}## Transcript
 
 {full_transcript}
 

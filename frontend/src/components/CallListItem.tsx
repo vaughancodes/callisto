@@ -91,13 +91,16 @@ export function CallListItem({
         {/* Status icon */}
         {statusIcon[call.status] ?? statusIcon.completed}
 
-        {/* Sentiment dot */}
-        {call.sentiment && (
-          <span
-            className={`w-2 h-2 rounded-full shrink-0 ${sentimentDot[call.sentiment] ?? "bg-page-text-muted"}`}
-            title={call.sentiment}
-          />
-        )}
+        {/* Sentiment dot (invisible placeholder when missing, to keep alignment) */}
+        <span
+          className={`w-2 h-2 rounded-full shrink-0 ${
+            call.sentiment
+              ? sentimentDot[call.sentiment] ?? "bg-page-text-muted"
+              : "invisible"
+          }`}
+          title={call.sentiment ?? ""}
+        />
+
 
         {/* Main info */}
         <Link to={`/calls/${call.id}`} className="flex-1 min-w-0">

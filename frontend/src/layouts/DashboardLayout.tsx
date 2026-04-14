@@ -1,5 +1,7 @@
 import {
   BarChart3,
+  ChevronsUpDown,
+  Cog,
   FileText,
   LayoutDashboard,
   LogOut,
@@ -8,13 +10,36 @@ import {
   Sun,
   Users,
 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
 
 export function DashboardLayout() {
-  const { user, tenant, logout } = useAuth();
+  const {
+    user,
+    tenant,
+    isTenantAdmin,
+    memberships,
+    logout,
+    switchTenant,
+  } = useAuth();
   const { theme, toggle: toggleTheme } = useTheme();
+
+  const [showTenantPicker, setShowTenantPicker] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setShowTenantPicker(false);
+      }
+    };
+    if (showTenantPicker) {
+      document.addEventListener("mousedown", onClick);
+      return () => document.removeEventListener("mousedown", onClick);
+    }
+  }, [showTenantPicker]);
 
   const navItems = [
     { to: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -22,6 +47,16 @@ export function DashboardLayout() {
     { to: "/templates", icon: FileText, label: "Templates" },
     { to: "/analytics", icon: BarChart3, label: "Analytics" },
   ];
+
+  const canSwitchTenant = memberships.length > 1;
+
+  const handleSwitch = async (tenantId: string) => {
+    setShowTenantPicker(false);
+    if (tenantId === tenant?.id) return;
+    await switchTenant(tenantId);
+    // Reload the page so all queries re-fetch for the new tenant
+    window.location.href = "/";
+  };
 
   return (
     <div className="flex h-screen bg-page-bg">
@@ -40,9 +75,48 @@ export function DashboardLayout() {
               className="h-6 min-w-0 max-w-full object-contain"
             />
           </div>
-          <p className="text-xs text-[#64748b] mt-2">
-            {tenant?.name ?? "No tenant assigned"}
-          </p>
+
+          {/* Tenant switcher */}
+          <div className="mt-3 relative" ref={pickerRef}>
+            {canSwitchTenant ? (
+              <button
+                onClick={() => setShowTenantPicker((v) => !v)}
+                className="w-full flex items-center justify-between gap-2 px-2 py-1.5 text-xs rounded-lg hover:bg-white/5 transition-colors"
+              >
+                <span className="text-[#94a3b8] truncate">
+                  {tenant?.name ?? "No tenant"}
+                </span>
+                <ChevronsUpDown className="w-3 h-3 text-[#64748b] shrink-0" />
+              </button>
+            ) : (
+              <p className="px-2 text-xs text-[#64748b]">
+                {tenant?.name ?? "No tenant assigned"}
+              </p>
+            )}
+
+            {showTenantPicker && canSwitchTenant && (
+              <div className="absolute left-0 right-0 mt-1 bg-[#1a1e28] border border-[#252a36] rounded-lg shadow-lg overflow-hidden z-10">
+                {memberships.map((m) => (
+                  <button
+                    key={m.tenant_id}
+                    onClick={() => handleSwitch(m.tenant_id)}
+                    className={`w-full text-left px-3 py-2 text-xs transition-colors ${
+                      m.tenant_id === tenant?.id
+                        ? "bg-brand-sky/15 text-accent-light"
+                        : "text-[#94a3b8] hover:bg-white/5 hover:text-[#e2e8f0]"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate">{m.tenant_name}</span>
+                      {m.is_admin && (
+                        <Shield className="w-3 h-3 text-accent-lavender shrink-0" />
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         <nav className="flex-1 p-3 space-y-1">
@@ -64,6 +138,22 @@ export function DashboardLayout() {
                 {label}
               </NavLink>
             ))}
+
+          {tenant && isTenantAdmin && (
+            <NavLink
+              to="/tenant-settings"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                  isActive
+                    ? "bg-brand-sky/15 text-accent-light"
+                    : "text-[#94a3b8] hover:bg-white/5 hover:text-[#e2e8f0]"
+                }`
+              }
+            >
+              <Cog className="w-4 h-4" />
+              Tenant Settings
+            </NavLink>
+          )}
 
           {!tenant && !user?.is_superadmin && (
             <p className="px-3 py-4 text-sm text-[#64748b]">
@@ -101,7 +191,11 @@ export function DashboardLayout() {
               <button
                 onClick={toggleTheme}
                 className="p-2 text-[#64748b] hover:text-[#e2e8f0] rounded transition-colors"
-                title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+                title={
+                  theme === "dark"
+                    ? "Switch to light mode"
+                    : "Switch to dark mode"
+                }
               >
                 {theme === "dark" ? (
                   <Sun className="w-4 h-4" />

@@ -10,7 +10,7 @@ from flask import Blueprint, abort, g, jsonify, redirect, request
 
 from callisto.config import Config
 from callisto.extensions import db
-from callisto.models import Tenant
+from callisto.models import Tenant, TenantMembership
 from callisto.models.user import User
 
 auth_bp = Blueprint("auth", __name__)
@@ -107,7 +107,7 @@ def google_callback():
 
 @auth_bp.route("/auth/me")
 def auth_me():
-    """Return current user and tenant from JWT."""
+    """Return current user, active tenant, and all tenant memberships."""
     from callisto.auth.middleware import verify_jwt
     verify_jwt()
 
@@ -115,14 +115,51 @@ def auth_me():
     if not user:
         abort(401)
 
+    # Active tenant (from user.tenant_id)
     tenant_data = None
+    is_tenant_admin = False
     if user.tenant:
         tenant_data = {
             "id": str(user.tenant.id),
             "name": user.tenant.name,
             "slug": user.tenant.slug,
+            "description": user.tenant.description,
             "settings": user.tenant.settings,
         }
+        # Check if user is admin of current tenant
+        if user.is_superadmin:
+            is_tenant_admin = True
+        else:
+            m = TenantMembership.query.filter_by(
+                user_id=user.id, tenant_id=user.tenant_id, is_admin=True
+            ).first()
+            is_tenant_admin = m is not None
+
+    # All memberships (tenants the user can access)
+    if user.is_superadmin:
+        tenants = Tenant.query.order_by(Tenant.name).all()
+        memberships = [
+            {
+                "tenant_id": str(t.id),
+                "tenant_name": t.name,
+                "tenant_slug": t.slug,
+                "is_admin": True,
+            }
+            for t in tenants
+        ]
+    else:
+        memberships_query = (
+            TenantMembership.query.filter_by(user_id=user.id).all()
+        )
+        memberships = [
+            {
+                "tenant_id": str(m.tenant_id),
+                "tenant_name": m.tenant.name,
+                "tenant_slug": m.tenant.slug,
+                "is_admin": m.is_admin,
+            }
+            for m in memberships_query
+        ]
 
     return jsonify({
         "user": {
@@ -132,4 +169,41 @@ def auth_me():
             "is_superadmin": user.is_superadmin,
         },
         "tenant": tenant_data,
+        "is_tenant_admin": is_tenant_admin,
+        "memberships": memberships,
     })
+
+
+@auth_bp.route("/auth/switch-tenant", methods=["POST"])
+def switch_tenant():
+    """Switch the user's active tenant. Returns a new JWT."""
+    from callisto.auth.middleware import verify_jwt
+    verify_jwt()
+
+    data = request.get_json() or {}
+    new_tenant_id = data.get("tenant_id")
+    if not new_tenant_id:
+        return jsonify({"error": "tenant_id is required"}), 400
+
+    user = db.session.get(User, g.current_user_id)
+    if not user:
+        abort(401)
+
+    # Verify the user has membership (or is superadmin)
+    if not user.is_superadmin:
+        membership = TenantMembership.query.filter_by(
+            user_id=user.id, tenant_id=new_tenant_id
+        ).first()
+        if not membership:
+            return jsonify({"error": "Not a member of this tenant"}), 403
+
+    # Verify tenant exists
+    tenant = db.session.get(Tenant, new_tenant_id)
+    if not tenant:
+        return jsonify({"error": "Tenant not found"}), 404
+
+    user.tenant_id = tenant.id
+    db.session.commit()
+
+    new_token = _issue_jwt(user)
+    return jsonify({"token": new_token})

@@ -23,3 +23,7 @@ class User(db.Model):
     created_at: Mapped[str] = mapped_column(db.DateTime(timezone=True), server_default=func.now())
 
     tenant = relationship("Tenant", back_populates="users")
+    memberships = relationship(
+        "TenantMembership", back_populates="user", lazy="dynamic",
+        cascade="all, delete-orphan",
+    )

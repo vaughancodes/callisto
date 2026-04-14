@@ -1,0 +1,353 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Shield, Trash2, UserPlus, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Navigate } from "react-router-dom";
+import { EmailLink } from "../components/LinkedContact";
+import { useAuth } from "../contexts/AuthContext";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
+import { apiFetch } from "../lib/api";
+
+interface TenantSettings {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  context: string | null;
+  settings: Record<string, unknown>;
+}
+
+interface Member {
+  user_id: string;
+  tenant_id: string;
+  email: string;
+  name: string;
+  is_admin: boolean;
+  created_at: string;
+}
+
+export function TenantSettingsPage() {
+  useDocumentTitle("Tenant Settings");
+  const { tenant, isTenantAdmin, refresh } = useAuth();
+  const queryClient = useQueryClient();
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [context, setContext] = useState("");
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [showAddMember, setShowAddMember] = useState(false);
+
+  const { data: settings } = useQuery({
+    queryKey: ["tenant-settings", tenant?.id],
+    queryFn: () =>
+      apiFetch<TenantSettings>(`/api/v1/tenants/${tenant!.id}/settings`),
+    enabled: !!tenant && isTenantAdmin,
+  });
+
+  useEffect(() => {
+    if (settings) {
+      setName(settings.name);
+      setDescription(settings.description ?? "");
+      setContext(settings.context ?? "");
+    }
+  }, [settings]);
+
+  const { data: members } = useQuery({
+    queryKey: ["tenant-members", tenant?.id],
+    queryFn: () =>
+      apiFetch<Member[]>(`/api/v1/tenants/${tenant!.id}/members`),
+    enabled: !!tenant && isTenantAdmin,
+  });
+
+  const saveSettings = useMutation({
+    mutationFn: (data: Record<string, unknown>) =>
+      apiFetch(`/api/v1/tenants/${tenant!.id}/settings`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tenant-settings"] });
+      void refresh();
+      setSaveMessage("Settings saved.");
+      setTimeout(() => setSaveMessage(null), 3000);
+    },
+  });
+
+  const addMember = useMutation({
+    mutationFn: (data: { email: string; is_admin: boolean }) =>
+      apiFetch(`/api/v1/tenants/${tenant!.id}/members`, {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tenant-members"] });
+      setShowAddMember(false);
+    },
+    onError: (err: Error) => {
+      alert(err.message);
+    },
+  });
+
+  const toggleAdmin = useMutation({
+    mutationFn: ({ userId, isAdmin }: { userId: string; isAdmin: boolean }) =>
+      apiFetch(`/api/v1/tenants/${tenant!.id}/members/${userId}`, {
+        method: "PUT",
+        body: JSON.stringify({ is_admin: isAdmin }),
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["tenant-members"] }),
+  });
+
+  const removeMember = useMutation({
+    mutationFn: (userId: string) =>
+      apiFetch(`/api/v1/tenants/${tenant!.id}/members/${userId}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ["tenant-members"] }),
+  });
+
+  if (!tenant) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (!isTenantAdmin) {
+    return (
+      <div className="p-6">
+        <div className="text-page-text-secondary">
+          You need to be a tenant administrator to view these settings.
+        </div>
+      </div>
+    );
+  }
+
+  const handleSave = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    saveSettings.mutate({
+      name,
+      description: description || null,
+      context: context || null,
+    });
+  };
+
+  const handleAddMember = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    addMember.mutate({
+      email: (form.get("email") as string).trim(),
+      is_admin: form.get("is_admin") === "on",
+    });
+  };
+
+  return (
+    <div className="p-6 max-w-4xl">
+      <h2 className="text-2xl font-bold text-page-text mb-6">Tenant Settings</h2>
+
+      {/* Basic settings */}
+      <div className="bg-card-bg rounded-lg border border-card-border mb-6">
+        <div className="p-4 border-b border-card-border">
+          <h3 className="font-semibold text-page-text">General</h3>
+        </div>
+        <form onSubmit={handleSave} className="p-6 space-y-5">
+          <div>
+            <label className="block text-sm font-medium text-page-text mb-1">
+              Name
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full px-3 py-2 border border-card-border rounded-lg text-sm bg-page-bg-tertiary text-page-text"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-page-text mb-1">
+              Description
+            </label>
+            <input
+              type="text"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full px-3 py-2 border border-card-border rounded-lg text-sm bg-page-bg-tertiary text-page-text"
+              placeholder="A short description of this tenant"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-page-text mb-1">
+              Business Context
+            </label>
+            <p className="text-xs text-page-text-secondary mb-2">
+              Describe what your callers typically contact you about. This
+              context is provided to the LLM during call analysis, so insights
+              are evaluated through the lens of your business. For example:
+              "We're a university admissions office. Callers are usually
+              prospective students or parents asking about application
+              deadlines, financial aid, campus visits, and program
+              requirements."
+            </p>
+            <textarea
+              value={context}
+              onChange={(e) => setContext(e.target.value)}
+              rows={8}
+              className="w-full px-3 py-2 border border-card-border rounded-lg text-sm bg-page-bg-tertiary text-page-text"
+              placeholder="Describe your business and the typical reasons people call..."
+            />
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={saveSettings.isPending}
+              className="px-4 py-2 text-sm bg-brand-sky text-white rounded-lg hover:bg-brand-sky/80 disabled:opacity-50"
+            >
+              {saveSettings.isPending ? "Saving..." : "Save Settings"}
+            </button>
+            {saveMessage && (
+              <span className="text-sm text-success">{saveMessage}</span>
+            )}
+          </div>
+        </form>
+      </div>
+
+      {/* Members */}
+      <div className="bg-card-bg rounded-lg border border-card-border">
+        <div className="p-4 border-b border-card-border flex items-center justify-between">
+          <h3 className="font-semibold text-page-text">Members</h3>
+          <button
+            onClick={() => setShowAddMember(true)}
+            className="flex items-center gap-2 px-3 py-1.5 bg-brand-sky text-white rounded-lg hover:bg-brand-sky/80 text-sm"
+          >
+            <UserPlus className="w-4 h-4" />
+            Add Member
+          </button>
+        </div>
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-card-border text-left text-sm text-page-text-secondary">
+              <th className="p-4 font-medium">Name</th>
+              <th className="p-4 font-medium">Email</th>
+              <th className="p-4 font-medium">Role</th>
+              <th className="p-4 font-medium">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-page-divider">
+            {members?.map((m) => (
+              <tr key={m.user_id} className="hover:bg-page-hover">
+                <td className="p-4 text-sm font-medium text-page-text">
+                  {m.name}
+                </td>
+                <td className="p-4 text-sm text-page-text-secondary">
+                  <EmailLink email={m.email} />
+                </td>
+                <td className="p-4">
+                  {m.is_admin ? (
+                    <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-accent-lavender/15 text-accent-lavender rounded-full">
+                      <Shield className="w-3 h-3" />
+                      Admin
+                    </span>
+                  ) : (
+                    <span className="text-xs text-page-text-muted">Member</span>
+                  )}
+                </td>
+                <td className="p-4 flex gap-3">
+                  <button
+                    onClick={() =>
+                      toggleAdmin.mutate({
+                        userId: m.user_id,
+                        isAdmin: !m.is_admin,
+                      })
+                    }
+                    className="text-xs px-2.5 py-1 border border-brand-sky text-brand-sky rounded-md hover:bg-brand-sky/10 transition-colors"
+                  >
+                    {m.is_admin ? "Remove Admin" : "Make Admin"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `Remove ${m.name} from this tenant?`
+                        )
+                      ) {
+                        removeMember.mutate(m.user_id);
+                      }
+                    }}
+                    className="text-xs px-2.5 py-1 border border-danger text-danger rounded-md hover:bg-danger/10 transition-colors"
+                  >
+                    <Trash2 className="w-3 h-3 inline" /> Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+            {members?.length === 0 && (
+              <tr>
+                <td colSpan={4} className="p-6 text-center text-page-text-muted">
+                  No members yet
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Add member modal */}
+      {showAddMember && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <div className="bg-card-bg rounded-xl shadow-lg w-full max-w-md p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-page-text">
+                Add Member
+              </h3>
+              <button
+                onClick={() => setShowAddMember(false)}
+                className="p-1 hover:bg-page-hover rounded"
+              >
+                <X className="w-5 h-5 text-page-text" />
+              </button>
+            </div>
+            <form onSubmit={handleAddMember} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-page-text mb-1">
+                  Email
+                </label>
+                <input
+                  name="email"
+                  type="email"
+                  required
+                  className="w-full px-3 py-2 border border-card-border rounded-lg text-sm bg-page-bg-tertiary text-page-text"
+                  placeholder="user@example.com"
+                />
+                <p className="text-xs text-page-text-muted mt-1">
+                  The user must have signed in at least once before they can
+                  be added.
+                </p>
+              </div>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" name="is_admin" />
+                <span className="text-sm text-page-text">
+                  Make this user an administrator
+                </span>
+              </label>
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAddMember(false)}
+                  className="px-4 py-2 text-sm text-page-text-secondary hover:bg-page-hover rounded-lg"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={addMember.isPending}
+                  className="px-4 py-2 text-sm bg-brand-sky text-white rounded-lg hover:bg-brand-sky/80 disabled:opacity-50"
+                >
+                  Add
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

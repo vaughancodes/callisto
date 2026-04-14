@@ -10,4 +10,12 @@ def require_jwt():
     verify_jwt()
 
 
-from callisto.api import analytics, calls, contacts, google_sync, templates, tenants  # noqa: E402, F401
+from callisto.api import (  # noqa: E402, F401
+    analytics,
+    calls,
+    contacts,
+    google_sync,
+    templates,
+    tenant_settings,
+    tenants,
+)
