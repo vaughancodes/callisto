@@ -94,9 +94,10 @@ Set your Twilio phone number's voice webhook to:
 POST https://your-domain.com/webhooks/twilio/voice
 ```
 
-### 5. Configure nginx
+### 5. Configure nginx (or your choice of reverse proxy)
 
-Callisto needs an nginx reverse proxy to route traffic to the correct services:
+Callisto needs a reverse proxy to route traffic to the correct services.
+The following is an example of an nginx configuration:
 
 ```nginx
 server {
