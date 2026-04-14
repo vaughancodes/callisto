@@ -1,5 +1,6 @@
 import {
   BarChart3,
+  Building2,
   ChevronsUpDown,
   Cog,
   FileText,
@@ -12,6 +13,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
+import { Tooltip } from "../components/Tooltip";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
 
@@ -21,9 +23,11 @@ export function DashboardLayout() {
     tenant,
     isTenantAdmin,
     memberships,
+    isOrgAdmin,
     logout,
     switchTenant,
   } = useAuth();
+  const showOrgSettings = !!tenant && isOrgAdmin(tenant.organization_id);
   const { theme, toggle: toggleTheme } = useTheme();
 
   const [showTenantPicker, setShowTenantPicker] = useState(false);
@@ -53,9 +57,18 @@ export function DashboardLayout() {
   const handleSwitch = async (tenantId: string) => {
     setShowTenantPicker(false);
     if (tenantId === tenant?.id) return;
-    await switchTenant(tenantId);
-    // Reload the page so all queries re-fetch for the new tenant
-    window.location.href = "/";
+    try {
+      await switchTenant(tenantId);
+      // Reload the page so all queries re-fetch for the new tenant
+      window.location.href = "/";
+    } catch (err) {
+      console.error("Failed to switch tenant:", err);
+      alert(
+        `Failed to switch tenant: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
+    }
   };
 
   return (
@@ -81,39 +94,68 @@ export function DashboardLayout() {
             {canSwitchTenant ? (
               <button
                 onClick={() => setShowTenantPicker((v) => !v)}
-                className="w-full flex items-center justify-between gap-2 px-2 py-1.5 text-xs rounded-lg hover:bg-white/5 transition-colors"
+                className="w-full flex items-center justify-between gap-2 px-2 py-1.5 text-sm rounded-lg hover:bg-white/5 transition-colors"
               >
                 <span className="text-[#94a3b8] truncate">
                   {tenant?.name ?? "No tenant"}
                 </span>
-                <ChevronsUpDown className="w-3 h-3 text-[#64748b] shrink-0" />
+                <ChevronsUpDown className="w-3.5 h-3.5 text-[#64748b] shrink-0" />
               </button>
             ) : (
-              <p className="px-2 text-xs text-[#64748b]">
+              <p className="px-2 text-sm text-[#64748b]">
                 {tenant?.name ?? "No tenant assigned"}
               </p>
             )}
 
             {showTenantPicker && canSwitchTenant && (
-              <div className="absolute left-0 right-0 mt-1 bg-[#1a1e28] border border-[#252a36] rounded-lg shadow-lg overflow-hidden z-10">
-                {memberships.map((m) => (
-                  <button
-                    key={m.tenant_id}
-                    onClick={() => handleSwitch(m.tenant_id)}
-                    className={`w-full text-left px-3 py-2 text-xs transition-colors ${
-                      m.tenant_id === tenant?.id
-                        ? "bg-brand-sky/15 text-accent-light"
-                        : "text-[#94a3b8] hover:bg-white/5 hover:text-[#e2e8f0]"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate">{m.tenant_name}</span>
-                      {m.is_admin && (
-                        <Shield className="w-3 h-3 text-accent-lavender shrink-0" />
-                      )}
+              <div className="absolute left-0 right-0 mt-1 bg-[#1a1e28] border border-[#252a36] rounded-lg shadow-lg overflow-hidden z-10 max-h-96 overflow-y-auto">
+                {(() => {
+                  // Group memberships by organization, preserving the order
+                  // they came back from /auth/me.
+                  const groups: {
+                    orgId: string;
+                    orgName: string;
+                    items: typeof memberships;
+                  }[] = [];
+                  for (const m of memberships) {
+                    const last = groups[groups.length - 1];
+                    if (last && last.orgId === m.organization_id) {
+                      last.items.push(m);
+                    } else {
+                      groups.push({
+                        orgId: m.organization_id,
+                        orgName: m.organization_name ?? "Unknown organization",
+                        items: [m],
+                      });
+                    }
+                  }
+                  return groups.map((g, gi) => (
+                    <div key={g.orgId}>
+                      {gi > 0 && <div className="border-t border-[#252a36]" />}
+                      <div className="px-3 pt-2 pb-1 text-xs uppercase tracking-wide font-semibold text-[#64748b]">
+                        {g.orgName}
+                      </div>
+                      {g.items.map((m) => (
+                        <button
+                          key={m.tenant_id}
+                          onClick={() => handleSwitch(m.tenant_id)}
+                          className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                            m.tenant_id === tenant?.id
+                              ? "bg-brand-sky/15 text-accent-light"
+                              : "text-[#94a3b8] hover:bg-white/5 hover:text-[#e2e8f0]"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="truncate">{m.tenant_name}</span>
+                            {m.is_admin && (
+                              <Shield className="w-3.5 h-3.5 text-accent-lavender shrink-0" />
+                            )}
+                          </div>
+                        </button>
+                      ))}
                     </div>
-                  </button>
-                ))}
+                  ));
+                })()}
               </div>
             )}
           </div>
@@ -161,23 +203,40 @@ export function DashboardLayout() {
             </p>
           )}
 
+          {(showOrgSettings || user?.is_superadmin) && (
+            <div className="border-t border-[#252a36] my-3" />
+          )}
+
+          {showOrgSettings && (
+            <NavLink
+              to="/organization-settings"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                  isActive
+                    ? "bg-accent-lavender/15 text-accent-lavender"
+                    : "text-accent-lavender/60 hover:bg-white/5 hover:text-accent-lavender"
+                }`
+              }
+            >
+              <Building2 className="w-4 h-4" />
+              Organization Settings
+            </NavLink>
+          )}
+
           {user?.is_superadmin && (
-            <>
-              <div className="border-t border-[#252a36] my-3" />
-              <NavLink
-                to="/admin"
-                className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
-                    isActive
-                      ? "bg-accent-lavender/15 text-accent-lavender"
-                      : "text-accent-lavender/60 hover:bg-white/5 hover:text-accent-lavender"
-                  }`
-                }
-              >
-                <Shield className="w-4 h-4" />
-                Administration
-              </NavLink>
-            </>
+            <NavLink
+              to="/admin"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                  isActive
+                    ? "bg-accent-lavender/15 text-accent-lavender"
+                    : "text-accent-lavender/60 hover:bg-white/5 hover:text-accent-lavender"
+                }`
+              }
+            >
+              <Shield className="w-4 h-4" />
+              Administration
+            </NavLink>
           )}
         </nav>
 
@@ -188,27 +247,34 @@ export function DashboardLayout() {
               <p className="text-xs text-[#64748b]">{user?.email}</p>
             </div>
             <div className="flex gap-1">
-              <button
-                onClick={toggleTheme}
-                className="p-2 text-[#64748b] hover:text-[#e2e8f0] rounded transition-colors"
-                title={
+              <Tooltip
+                content={
                   theme === "dark"
                     ? "Switch to light mode"
                     : "Switch to dark mode"
                 }
               >
-                {theme === "dark" ? (
-                  <Sun className="w-4 h-4" />
-                ) : (
-                  <Moon className="w-4 h-4" />
-                )}
-              </button>
-              <button
-                onClick={logout}
-                className="p-2 text-[#64748b] hover:text-[#e2e8f0] rounded transition-colors"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
+                <button
+                  onClick={toggleTheme}
+                  aria-label="Toggle theme"
+                  className="p-2 text-[#64748b] hover:text-[#e2e8f0] rounded transition-colors"
+                >
+                  {theme === "dark" ? (
+                    <Sun className="w-4 h-4" />
+                  ) : (
+                    <Moon className="w-4 h-4" />
+                  )}
+                </button>
+              </Tooltip>
+              <Tooltip content="Log out">
+                <button
+                  onClick={logout}
+                  aria-label="Log out"
+                  className="p-2 text-[#64748b] hover:text-[#e2e8f0] rounded transition-colors"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </Tooltip>
             </div>
           </div>
         </div>

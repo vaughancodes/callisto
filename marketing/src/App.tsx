@@ -4,6 +4,7 @@ import {
   Building2,
   Cpu,
   LineChart,
+  Phone,
   Radio,
   ShieldCheck,
   Waves,
@@ -47,13 +48,18 @@ const features = [
   },
   {
     icon: Building2,
-    title: "Multi-tenant by design",
-    body: "Tenant isolation, per-tenant context, member management, and Google OAuth login built in from day one.",
+    title: "Built for teams within teams",
+    body: "One company, many teams, all under the same roof. Sales, support, and any other group on the phone gets its own dashboard, contacts, and rules — without spinning up a new Callisto for each one.",
   },
   {
     icon: Cpu,
     title: "Plug in any LLM",
     body: "Run a model on your own hardware or through a provider you already have an account with. Callisto doesn't lock you into either.",
+  },
+  {
+    icon: Phone,
+    title: "Use the phones you already have",
+    body: "Desk phones, softphones, anything that speaks SIP. Calls placed from your team's existing devices flow through the same transcription and insight pipeline.",
   },
 ];
 
@@ -78,20 +84,19 @@ const flow = [
 export default function App() {
   return (
     <div className="min-h-screen bg-surface-dark text-text-primary overflow-x-hidden">
-      {/* Glow backdrop */}
-      <div className="pointer-events-none fixed inset-0 -z-10">
-        <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[1100px] h-[1100px] rounded-full bg-brand-sky/10 blur-[160px]" />
-        <div className="absolute top-[40%] right-[-10%] w-[800px] h-[800px] rounded-full bg-accent-periwinkle/10 blur-[160px]" />
-        <div className="absolute bottom-[-15%] left-[-10%] w-[700px] h-[700px] rounded-full bg-accent-lavender/10 blur-[160px]" />
-      </div>
 
       {/* Nav */}
       <header className="max-w-6xl mx-auto px-6 py-6 flex items-center justify-between">
         <a href="/" className="flex items-center gap-3">
           <img
+            src="/callisto-icon-static.svg"
+            alt=""
+            className="hidden sm:block lg:hidden w-9 h-9"
+          />
+          <img
             src="/callisto-icon-animated.svg"
             alt=""
-            className="w-9 h-9"
+            className="hidden lg:block w-9 h-9"
           />
           <img
             src="/callisto-wordmark-dark.svg"
@@ -125,9 +130,14 @@ export default function App() {
       <section className="max-w-6xl mx-auto px-6 pt-20 pb-32 text-center">
         <div className="flex justify-center mb-10">
           <img
+            src="/callisto-icon-static.svg"
+            alt=""
+            className="block lg:hidden w-44 h-44"
+          />
+          <img
             src="/callisto-icon-animated.svg"
             alt=""
-            className="w-44 h-44 drop-shadow-[0_0_60px_rgba(14,165,233,0.35)]"
+            className="hidden lg:block w-44 h-44 drop-shadow-[0_0_60px_rgba(14,165,233,0.35)]"
           />
         </div>
         <h1 className="text-5xl sm:text-6xl font-bold tracking-tight leading-[1.05]">
@@ -172,22 +182,29 @@ export default function App() {
           </h2>
         </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {features.map((f) => (
-            <div
-              key={f.title}
-              className="rounded-xl border border-surface-border bg-surface-elevated/60 backdrop-blur-sm p-6 hover:border-brand-sky/40 transition-colors"
-            >
-              <div className="w-10 h-10 rounded-lg bg-brand-sky/15 text-brand-sky flex items-center justify-center mb-4">
-                <f.icon className="w-5 h-5" />
+          {features.map((f, i) => {
+            // Center the final orphan card on its own row when the grid
+            // has an odd number that doesn't divide evenly.
+            const isLast = i === features.length - 1;
+            const lastRowSolo =
+              isLast && features.length % 3 === 1 ? "lg:col-start-2" : "";
+            return (
+              <div
+                key={f.title}
+                className={`rounded-xl border border-surface-border bg-surface-elevated/60 backdrop-blur-sm p-6 hover:border-brand-sky/40 transition-colors ${lastRowSolo}`}
+              >
+                <div className="w-10 h-10 rounded-lg bg-brand-sky/15 text-brand-sky flex items-center justify-center mb-4">
+                  <f.icon className="w-5 h-5" />
+                </div>
+                <h3 className="text-lg font-semibold text-text-primary mb-2">
+                  {f.title}
+                </h3>
+                <p className="text-sm text-text-secondary leading-relaxed">
+                  {f.body}
+                </p>
               </div>
-              <h3 className="text-lg font-semibold text-text-primary mb-2">
-                {f.title}
-              </h3>
-              <p className="text-sm text-text-secondary leading-relaxed">
-                {f.body}
-              </p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
@@ -238,8 +255,8 @@ export default function App() {
           Ready to listen in on what your calls are actually saying?
         </h2>
         <p className="text-text-secondary max-w-xl mx-auto mb-8">
-          Sign in with Google and start defining insights against your own
-          calls in minutes.
+          Sign in and start defining insights against your own calls in
+          minutes.
         </p>
         <a
           href={APP_URL}

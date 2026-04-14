@@ -9,6 +9,7 @@ import { ContactDetailPage } from "./pages/ContactDetailPage";
 import { ContactsPage } from "./pages/ContactsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
+import { OrganizationSettingsPage } from "./pages/OrganizationSettingsPage";
 import { TemplatesPage } from "./pages/TemplatesPage";
 import { TenantSettingsPage } from "./pages/TenantSettingsPage";
 
@@ -30,6 +31,10 @@ export default function App() {
         <Route path="/contacts/:contactId" element={<ContactDetailPage />} />
         <Route path="/templates" element={<TemplatesPage />} />
         <Route path="/tenant-settings" element={<TenantSettingsPage />} />
+        <Route
+          path="/organization-settings"
+          element={<OrganizationSettingsPage />}
+        />
         <Route path="/analytics" element={<AnalyticsPage />} />
         <Route path="/admin" element={<AdminPage />} />
       </Route>

@@ -23,6 +23,12 @@ class InsightTemplate(db.Model):
     category: Mapped[str] = mapped_column(String, nullable=False)
     severity: Mapped[str] = mapped_column(String, default="info")
     is_realtime: Mapped[bool] = mapped_column(Boolean, default=True)
+    inbound_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true"
+    )
+    outbound_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true"
+    )
     output_schema: Mapped[dict | None] = mapped_column(JSONB)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=func.now())

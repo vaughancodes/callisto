@@ -20,6 +20,7 @@ interface TenantInfo {
   name: string;
   slug: string;
   description: string | null;
+  organization_id: string;
   settings: Record<string, unknown>;
 }
 
@@ -27,6 +28,15 @@ export interface Membership {
   tenant_id: string;
   tenant_name: string;
   tenant_slug: string;
+  organization_id: string;
+  organization_name: string | null;
+  is_admin: boolean;
+}
+
+export interface OrganizationMembership {
+  organization_id: string;
+  organization_name: string;
+  organization_slug: string;
   is_admin: boolean;
 }
 
@@ -35,6 +45,7 @@ interface AuthMeResponse {
   tenant: TenantInfo | null;
   is_tenant_admin: boolean;
   memberships: Membership[];
+  organization_memberships: OrganizationMembership[];
 }
 
 interface AuthState {
@@ -42,6 +53,8 @@ interface AuthState {
   tenant: TenantInfo | null;
   isTenantAdmin: boolean;
   memberships: Membership[];
+  organizationMemberships: OrganizationMembership[];
+  isOrgAdmin: (organizationId: string) => boolean;
   isLoading: boolean;
   login: () => void;
   logout: () => void;
@@ -54,6 +67,8 @@ const AuthContext = createContext<AuthState>({
   tenant: null,
   isTenantAdmin: false,
   memberships: [],
+  organizationMemberships: [],
+  isOrgAdmin: () => false,
   isLoading: true,
   login: () => {},
   logout: () => {},
@@ -66,6 +81,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [tenant, setTenant] = useState<TenantInfo | null>(null);
   const [isTenantAdmin, setIsTenantAdmin] = useState(false);
   const [memberships, setMemberships] = useState<Membership[]>([]);
+  const [organizationMemberships, setOrganizationMemberships] = useState<
+    OrganizationMembership[]
+  >([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -80,12 +98,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setTenant(data.tenant);
       setIsTenantAdmin(data.is_tenant_admin);
       setMemberships(data.memberships);
+      setOrganizationMemberships(data.organization_memberships ?? []);
     } catch {
       clearToken();
     } finally {
       setIsLoading(false);
     }
   }, []);
+
+  const isOrgAdmin = useCallback(
+    (organizationId: string) => {
+      if (user?.is_superadmin) return true;
+      return organizationMemberships.some(
+        (m) => m.organization_id === organizationId && m.is_admin
+      );
+    },
+    [user, organizationMemberships]
+  );
 
   useEffect(() => {
     void refresh();
@@ -101,6 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setTenant(null);
     setIsTenantAdmin(false);
     setMemberships([]);
+    setOrganizationMemberships([]);
     window.location.href = "/login";
   };
 
@@ -121,6 +151,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         tenant,
         isTenantAdmin,
         memberships,
+        organizationMemberships,
+        isOrgAdmin,
         isLoading,
         login,
         logout,

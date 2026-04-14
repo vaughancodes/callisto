@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { Dropdown } from "../components/Dropdown";
 import { HelpTooltip } from "../components/HelpTooltip";
 import { PageLoadingSpinner } from "../components/LoadingSpinner";
 import { useAuth } from "../contexts/AuthContext";
@@ -17,6 +18,8 @@ interface Template {
   category: string;
   severity: string;
   is_realtime: boolean;
+  inbound_enabled: boolean;
+  outbound_enabled: boolean;
   output_schema: unknown;
   active: boolean;
 }
@@ -34,6 +37,15 @@ export function TemplatesPage() {
   // create a new template from an existing one without editing it in place).
   const [formDefaults, setFormDefaults] = useState<Template | null>(null);
   const [deleting, setDeleting] = useState<Template | null>(null);
+  const [category, setCategory] = useState<string>("custom");
+  const [severity, setSeverity] = useState<string>("info");
+
+  useEffect(() => {
+    if (showForm) {
+      setCategory(formDefaults?.category ?? "custom");
+      setSeverity(formDefaults?.severity ?? "info");
+    }
+  }, [showForm, formDefaults]);
 
   const { data: templates, isLoading } = useQuery({
     queryKey: ["templates", tenant?.id],
@@ -63,6 +75,8 @@ export function TemplatesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["templates"] });
       setEditing(null);
+      setFormDefaults(null);
+      setShowForm(false);
     },
   });
 
@@ -82,6 +96,8 @@ export function TemplatesPage() {
       category: form.get("category"),
       severity: form.get("severity"),
       is_realtime: form.get("is_realtime") === "on",
+      inbound_enabled: form.get("inbound_enabled") === "on",
+      outbound_enabled: form.get("outbound_enabled") === "on",
     };
 
     if (editing) {
@@ -294,17 +310,12 @@ export function TemplatesPage() {
                       in analytics.
                     </HelpTooltip>
                   </label>
-                  <select
+                  <Dropdown
                     name="category"
-                    defaultValue={formDefaults?.category ?? "custom"}
-                    className="w-full px-3 py-2 border border-card-border rounded-lg text-sm bg-page-bg-tertiary text-page-text"
-                  >
-                    {categories.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
+                    value={category}
+                    onChange={setCategory}
+                    options={categories.map((c) => ({ value: c, label: c }))}
+                  />
                 </div>
                 <div>
                   <label className="flex items-center gap-1.5 text-sm font-medium text-page-text mb-1">
@@ -314,17 +325,12 @@ export function TemplatesPage() {
                       show up as red, "warning" as yellow, "info" as blue.
                     </HelpTooltip>
                   </label>
-                  <select
+                  <Dropdown
                     name="severity"
-                    defaultValue={formDefaults?.severity ?? "info"}
-                    className="w-full px-3 py-2 border border-card-border rounded-lg text-sm bg-page-bg-tertiary text-page-text"
-                  >
-                    {severities.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
+                    value={severity}
+                    onChange={setSeverity}
+                    options={severities.map((s) => ({ value: s, label: s }))}
+                  />
                 </div>
               </div>
               <div>
@@ -345,6 +351,33 @@ export function TemplatesPage() {
                     </HelpTooltip>
                   </span>
                 </label>
+              </div>
+              <div>
+                <label className="flex items-center gap-1.5 text-sm font-medium text-page-text mb-2">
+                  Evaluate on
+                  <HelpTooltip>
+                    Which call directions this template applies to. At least
+                    one should be enabled, otherwise the template never fires.
+                  </HelpTooltip>
+                </label>
+                <div className="flex items-center gap-6">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      name="inbound_enabled"
+                      defaultChecked={formDefaults?.inbound_enabled ?? true}
+                    />
+                    <span className="text-sm text-page-text">Inbound calls</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      name="outbound_enabled"
+                      defaultChecked={formDefaults?.outbound_enabled ?? true}
+                    />
+                    <span className="text-sm text-page-text">Outbound calls</span>
+                  </label>
+                </div>
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button

@@ -20,6 +20,7 @@ interface ContactData {
   company: string | null;
   phone_numbers: string[];
   email: string | null;
+  notes: string | null;
   google_contact_id: string | null;
   created_at: string;
 }
@@ -95,6 +96,7 @@ export function ContactsPage() {
       company: form.get("company") || null,
       phone_numbers: phones,
       email: form.get("email") || null,
+      notes: form.get("notes") || null,
     };
     if (editing) {
       updateMutation.mutate({ id: editing.id, ...d });
@@ -320,6 +322,16 @@ export function ContactsPage() {
               <div>
                 <label className="block text-sm font-medium text-page-text mb-1">Email</label>
                 <input name="email" type="email" defaultValue={editing?.email ?? ""} className="w-full px-3 py-2 border border-card-border rounded-lg text-sm bg-page-bg-tertiary text-page-text" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-page-text mb-1">Notes</label>
+                <textarea
+                  name="notes"
+                  defaultValue={editing?.notes ?? ""}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-card-border rounded-lg text-sm bg-page-bg-tertiary text-page-text placeholder:text-page-text-muted"
+                  placeholder="Optional notes about this contact"
+                />
               </div>
               <div className="flex justify-end gap-3 pt-2">
                 <button type="button" onClick={() => { setShowForm(false); setFormError(null); }} className="px-4 py-2 text-sm text-page-text-secondary hover:bg-page-hover rounded-lg">Cancel</button>

@@ -270,26 +270,37 @@ class InsightEvaluator:
         return None
 
     async def _get_templates(self, call_id: str, tenant_id: str) -> list[dict]:
-        """Load active realtime templates and tenant context for this call.
-        Cached per-call (fresh fetch on the first chunk of each call) so
-        template/context edits apply to any subsequent calls without
-        restarting the evaluator.
+        """Load active realtime templates (filtered by call direction) and
+        tenant context for this call. Cached per-call (fresh fetch on the
+        first chunk of each call) so template/context edits apply to any
+        subsequent calls without restarting the evaluator.
         """
         if call_id in self.templates_cache:
             return self.templates_cache[call_id]
 
         from callisto.app import create_app
         from callisto.extensions import db
-        from callisto.models import InsightTemplate, Tenant
+        from callisto.models import Call, InsightTemplate, Tenant
 
         app = create_app()
         with app.app_context():
             tenant = db.session.get(Tenant, tenant_id)
             self.context_cache[call_id] = tenant.context if tenant else None
 
-            templates = InsightTemplate.query.filter_by(
+            # Look up the call's direction so we can filter templates.
+            # call_id here is the Twilio CallSid (external_id).
+            call = Call.query.filter_by(external_id=call_id).first()
+            direction = (call.direction or "inbound") if call else "inbound"
+
+            query = InsightTemplate.query.filter_by(
                 tenant_id=tenant_id, active=True, is_realtime=True
-            ).all()
+            )
+            if direction.startswith("outbound"):
+                query = query.filter_by(outbound_enabled=True)
+            else:
+                query = query.filter_by(inbound_enabled=True)
+
+            templates = query.all()
             result = [
                 {
                     "id": str(t.id),

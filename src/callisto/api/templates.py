@@ -15,6 +15,8 @@ def _serialize_template(t: InsightTemplate) -> dict:
         "category": t.category,
         "severity": t.severity,
         "is_realtime": t.is_realtime,
+        "inbound_enabled": t.inbound_enabled,
+        "outbound_enabled": t.outbound_enabled,
         "output_schema": t.output_schema,
         "active": t.active,
     }
@@ -34,6 +36,8 @@ def create_template(tenant_id):
         category=data.get("category", "custom"),
         severity=data.get("severity", "info"),
         is_realtime=data.get("is_realtime", True),
+        inbound_enabled=data.get("inbound_enabled", True),
+        outbound_enabled=data.get("outbound_enabled", True),
         output_schema=data.get("output_schema"),
     )
     db.session.add(template)
@@ -54,7 +58,8 @@ def update_template(template_id):
     data = request.get_json()
 
     for field in ("name", "description", "prompt", "category", "severity",
-                  "is_realtime", "output_schema", "active"):
+                  "is_realtime", "inbound_enabled", "outbound_enabled",
+                  "output_schema", "active"):
         if field in data:
             setattr(template, field, data[field])
 

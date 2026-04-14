@@ -17,8 +17,12 @@ class Config:
     TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "")
     TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
 
-    # Ingestion gateway host — used in TwiML to tell Twilio where to stream audio
-    INGESTION_WS_HOST = os.environ.get("INGESTION_WS_HOST", "localhost:5310")
+    # Canonical public URL of the Callisto deployment, including scheme.
+    # Used to build both the Twilio voice webhook URL and the Media Stream
+    # WebSocket URL embedded in TwiML. e.g. https://app.callisto.works
+    PUBLIC_BASE_URL = os.environ.get(
+        "PUBLIC_BASE_URL", "http://localhost:5309"
+    )
 
     # LLM — any OpenAI-compatible endpoint
     LLM_API_KEY = os.environ.get("LLM_API_KEY", "")

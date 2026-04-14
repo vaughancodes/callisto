@@ -35,10 +35,11 @@ def require_superadmin():
 
 
 def require_tenant_admin(tenant_id: str):
-    """Abort 403 if the current user is not an admin of the given tenant.
-    Superadmins always pass.
+    """Abort 403 if the current user is not a tenant or org admin.
+
+    Hierarchy: superadmin > org admin (of the tenant's org) > tenant admin.
     """
-    from callisto.models import TenantMembership
+    from callisto.models import OrganizationMembership, Tenant, TenantMembership
 
     if g.is_superadmin:
         return
@@ -46,20 +47,67 @@ def require_tenant_admin(tenant_id: str):
     membership = TenantMembership.query.filter_by(
         user_id=g.current_user_id, tenant_id=str(tenant_id), is_admin=True
     ).first()
+    if membership:
+        return
+
+    # Walk up to the org: org admins implicitly admin every tenant in their org
+    tenant = Tenant.query.get(str(tenant_id))
+    if tenant:
+        org_membership = OrganizationMembership.query.filter_by(
+            user_id=g.current_user_id,
+            organization_id=tenant.organization_id,
+            is_admin=True,
+        ).first()
+        if org_membership:
+            return
+
+    abort(403, description="Tenant admin access required")
+
+
+def require_org_admin(organization_id: str):
+    """Abort 403 if the current user is not an admin of the given org.
+
+    Superadmins always pass.
+    """
+    from callisto.models import OrganizationMembership
+
+    if g.is_superadmin:
+        return
+
+    membership = OrganizationMembership.query.filter_by(
+        user_id=g.current_user_id,
+        organization_id=str(organization_id),
+        is_admin=True,
+    ).first()
     if not membership:
-        abort(403, description="Tenant admin access required")
+        abort(403, description="Organization admin access required")
 
 
 def is_tenant_member(tenant_id: str) -> bool:
-    """Return True if the current user is a member of the given tenant (or superadmin)."""
-    from callisto.models import TenantMembership
+    """Return True if the user can read the given tenant.
+
+    Superadmins, org admins of the tenant's org, and direct tenant members
+    all pass.
+    """
+    from callisto.models import OrganizationMembership, Tenant, TenantMembership
 
     if g.is_superadmin:
         return True
 
-    return (
+    if (
         TenantMembership.query.filter_by(
             user_id=g.current_user_id, tenant_id=str(tenant_id)
         ).first()
         is not None
-    )
+    ):
+        return True
+
+    tenant = Tenant.query.get(str(tenant_id))
+    if tenant:
+        return (
+            OrganizationMembership.query.filter_by(
+                user_id=g.current_user_id, organization_id=tenant.organization_id
+            ).first()
+            is not None
+        )
+    return False

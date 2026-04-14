@@ -5,13 +5,15 @@
 </p>
 
 <p align="center">
-  <strong>Multi-tenant telephony intelligence platform</strong><br>
+  <strong>Telephony intelligence for organizations and their teams</strong><br>
   Real-time call analysis with configurable LLM-powered insight detection.
 </p>
 
 ---
 
 Callisto listens to live phone calls via Twilio Media Streams, transcribes audio in real time with Deepgram or Whisper, and evaluates configurable insight templates against the conversation using any OpenAI-compatible LLM. Detected insights are delivered to dashboards over WebSocket as the call happens, with deep post-call analysis, summaries, and trend analytics.
+
+A multi-tier hierarchy lets multiple teams share infrastructure cleanly: superadmins manage **organizations** and assign them Twilio numbers from the account pool; org admins assign numbers to **tenants** within their org and manage tenant lifecycle; tenant admins configure per-number routing (inbound, outbound, or both), mint **SIP credentials** for desk/softphones, and curate insight templates and contacts.
 
 ## Architecture
 
@@ -38,12 +40,13 @@ Twilio Call ──► Ingestion Server (WebSocket, port 5310)
 
 | Service | Port | Description |
 |---------|------|-------------|
-| `api` | 5309 | Flask REST API + Twilio webhooks + Google OAuth |
-| `ingestion` | 5310 | WebSocket server for Twilio Media Streams |
-| `evaluator` | — | Redis Streams consumer, sliding window LLM evaluation |
+| `api` | 5309 | Flask REST API + Twilio webhooks + Google OAuth + Twilio SIP/number management |
+| `ingestion` | 5310 | WebSocket server for Twilio Media Streams (handles inbound, REST-API outbound, and SIP-originated calls) |
+| `evaluator` | — | Redis Streams consumer, sliding window LLM evaluation, direction-aware template filtering |
 | `broadcaster` | 5311 | WebSocket server for real-time insight delivery |
 | `worker` | — | Celery worker for cold-path analysis |
-| `frontend` | 5308 | React + Vite dashboard |
+| `frontend` | 5308 | React + Vite dashboard (`app.yourdomain.com`) |
+| `marketing` | 5307 | React + Vite marketing site (`yourdomain.com`) |
 | `postgres` | 5433 | PostgreSQL 16 |
 | `redis` | 6380 | Redis 7 (Celery broker + Redis Streams + Pub/Sub) |
 
@@ -102,30 +105,28 @@ The following is an example of an nginx configuration:
 ```nginx
 server {
     listen 443 ssl;
-    server_name callisto.yourdomain.com;
+    server_name app.yourdomain.com;
 
-    ssl_certificate     /etc/letsencrypt/live/callisto.yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/callisto.yourdomain.com/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/app.yourdomain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/app.yourdomain.com/privkey.pem;
 
-    # Flask API + Auth + Webhooks
+    # Flask API
     location /api/ {
         proxy_pass http://127.0.0.1:5309;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
-    location /auth/google/ {
+
+    # API-side auth endpoints. /auth/callback is intentionally excluded so it
+    # falls through to the frontend (it's a React Router page, not a Flask route).
+    location ~ ^/auth/(google|me|switch-tenant) {
         proxy_pass http://127.0.0.1:5309;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
-    location /auth/me {
-        proxy_pass http://127.0.0.1:5309;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
+
     location /webhooks/ {
         proxy_pass http://127.0.0.1:5309;
         proxy_set_header Host $host;
@@ -156,7 +157,7 @@ server {
         proxy_read_timeout 86400;
     }
 
-    # Frontend (everything else)
+    # Frontend (everything else, including /auth/callback)
     location / {
         proxy_pass http://127.0.0.1:5308;
         proxy_set_header Host $host;
@@ -169,15 +170,27 @@ server {
 }
 ```
 
-### 6. Create a tenant
+### 6. Create an organization, then a tenant
 
-Log in via Google OAuth at `https://your-domain.com`. If your email is in `SUPERADMIN_EMAILS`, you'll have admin access. Go to Administration → create a tenant with your Twilio number, then assign your user to it.
+Log in via Google OAuth at `https://app.yourdomain.com`. If your email is in `SUPERADMIN_EMAILS`, you'll have superadmin access.
 
-### 7. Add insight templates
+1. **Administration** (superadmin only) — create a new **organization**, then assign Twilio numbers from your Twilio account to that organization. The Phone Numbers table is populated live from the Twilio API and any reassignment automatically updates each number's voice webhook on Twilio.
+2. **Organization Settings** (org admin) — create one or more **tenants** under the org and assign numbers from the org's pool to specific tenants. Org admins also manage org membership.
+3. **Tenant Settings** (tenant admin) — for each assigned number, click **Edit Configuration** to set a friendly name, enable inbound and/or outbound, choose how inbound calls route (record-only, ring a SIP device, or forward to another number), and optionally mint a SIP user so a deskphone or softphone can register against the number directly.
+
+### 7. (Optional) Mint SIP credentials for an external phone
+
+In **Tenant Settings → Phone Numbers → Edit Configuration**, click **Create SIP User** to generate username/password credentials for the number. Callisto will lazily create a Twilio SIP Domain for the tenant on first use, configure it for both call and registration auth, and surface the credentials once in a reveal modal (the password is shown only on creation — Twilio never returns it again). Drop those credentials into Linphone, Zoiper, Bria, or any SIP-capable deskphone (Polycom/Yealink/Cisco) and the device can place outbound calls and receive inbound calls through Callisto.
+
+### 8. Add insight templates
 
 Go to Templates and create templates that define what Callisto should look
 for in calls. Each template is a natural-language rule the LLM evaluates
-against the transcript. Some **example** templates to get you started:
+against the transcript. Each template can be limited to **inbound calls**,
+**outbound calls**, or both — the evaluator and cold-path filter by call
+direction so an inbound-only template never fires on an outbound call.
+
+Some **example** templates to get you started:
 
 | Name | Category | Severity | Prompt |
 |------|----------|----------|--------|
@@ -187,9 +200,9 @@ against the transcript. Some **example** templates to get you started:
 
 These are just examples — define whatever makes sense for your own use case.
 
-### 8. Make a call
+### 9. Make a call
 
-Call your Twilio number. The call stays open (no forwarding needed for testing). Speak for 15-30 seconds and watch insights appear in real time on the dashboard.
+Either call your Twilio number from any phone (inbound), or place a call from a registered SIP device (outbound). The call appears in the dashboard's recent calls list with an incoming/outgoing arrow icon, the friendly name of the number it ran on, and live insights stream into the right-hand panel as the conversation unfolds. When the call ends, a Celery cold-path runs deep analysis, generates a summary, and tags topics, sentiment, and action items.
 
 ## Environment Variables
 
@@ -204,12 +217,12 @@ See [`.env.example`](.env.example) for the complete list with descriptions.
 | `STT_PROVIDER` | No | `auto`, `deepgram`, or `whisper` |
 | `TWILIO_ACCOUNT_SID` | Yes | Twilio account SID |
 | `TWILIO_AUTH_TOKEN` | Yes | Twilio auth token |
-| `INGESTION_WS_HOST` | Yes | Public hostname for WebSocket (used in TwiML) |
+| `PUBLIC_BASE_URL` | Yes | Canonical public URL of the deployment, e.g. `https://app.yourdomain.com`. Used to build the Twilio voice webhook URL, the Media Stream WebSocket URL embedded in TwiML, and the SIP Domain voice webhook |
 | `GOOGLE_CLIENT_ID` | Yes | Google OAuth client ID |
 | `GOOGLE_CLIENT_SECRET` | Yes | Google OAuth client secret |
 | `GOOGLE_REDIRECT_URI` | Yes | OAuth callback URL |
 | `JWT_SECRET` | Yes | Secret for signing JWTs |
-| `SUPERADMIN_EMAILS` | No | Comma-separated emails that get admin on first login |
+| `SUPERADMIN_EMAILS` | No | Comma-separated emails that get superadmin on first login |
 | `FRONTEND_URL` | Yes | Frontend URL for OAuth redirects |
 
 ## Project Structure
@@ -219,15 +232,17 @@ callisto/
 ├── src/callisto/              # Python backend
 │   ├── app.py                 # Flask app factory
 │   ├── config.py              # Configuration from env vars
-│   ├── models/                # SQLAlchemy models (Tenant, Call, Contact, Insight, etc.)
-│   ├── api/                   # REST API endpoints
-│   ├── auth/                  # Google OAuth + JWT middleware
+│   ├── twilio_client.py       # Twilio REST wrapper (numbers, SIP Domains, credentials)
+│   ├── models/                # SQLAlchemy models (Organization, Tenant, PhoneNumber, Call, Contact, Insight, ...)
+│   ├── api/                   # REST API endpoints (orgs, tenants, numbers, SIP users, calls, ...)
+│   ├── auth/                  # Google OAuth + JWT middleware (org-aware permission helpers)
 │   ├── ingestion/             # Twilio WebSocket server + audio decoding
-│   ├── transcription/         # Deepgram streaming + Whisper
-│   ├── evaluation/            # Sliding window insight evaluator
+│   ├── transcription/         # Deepgram streaming (two-track) + Whisper (two-track fallback)
+│   ├── evaluation/            # Sliding window insight evaluator (direction-aware template filter)
 │   ├── broadcaster/           # WebSocket insight broadcaster
 │   └── tasks.py               # Celery cold-path pipeline
-├── frontend/                  # React + Vite + TypeScript
+├── frontend/                  # React + Vite + TypeScript app dashboard
+├── marketing/                 # React + Vite marketing site
 ├── alembic/                   # Database migrations
 ├── docker-compose.yml
 ├── Dockerfile

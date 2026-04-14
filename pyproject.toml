@@ -21,6 +21,7 @@ dependencies = [
     "websockets>=14.0,<15",
     "PyJWT>=2.8,<3",
     "flask-cors>=5.0,<6",
+    "twilio>=9.3,<10",
 ]
 
 [project.optional-dependencies]

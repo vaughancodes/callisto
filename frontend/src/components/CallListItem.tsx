@@ -6,13 +6,32 @@ import {
   ChevronRight,
   Clock,
   Phone,
+  PhoneIncoming,
+  PhoneOutgoing,
   StickyNote,
 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { PhoneLink } from "./LinkedContact";
+import { Tooltip } from "./Tooltip";
 import { formatDateTime, formatStatus } from "../lib/format";
 import { apiFetch } from "../lib/api";
+
+function DirectionIcon({ direction }: { direction: string }) {
+  const isOutbound = direction.startsWith("outbound");
+  const Icon = isOutbound ? PhoneOutgoing : PhoneIncoming;
+  const label = isOutbound ? "Outbound call" : "Inbound call";
+  return (
+    <Tooltip content={label}>
+      <Icon
+        className={`w-3.5 h-3.5 ${
+          isOutbound ? "text-accent-periwinkle" : "text-brand-sky"
+        }`}
+        aria-label={label}
+      />
+    </Tooltip>
+  );
+}
 
 export interface CallListData {
   id: string;
@@ -20,6 +39,9 @@ export interface CallListData {
   source?: string;
   direction: string;
   caller_number: string;
+  callee_number?: string | null;
+  other_party_number?: string | null;
+  our_number_friendly_name?: string | null;
   contact_id?: string | null;
   contact_name?: string | null;
   contact_company?: string | null;
@@ -109,11 +131,12 @@ export function CallListItem({
               <p className="text-sm font-medium text-page-text">
                 {formatDateTime(call.started_at)}
               </p>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-xs text-page-text-secondary">
-                  {call.direction.charAt(0).toUpperCase() + call.direction.slice(1)} call &middot;{" "}
-                  <PhoneLink number={call.caller_number} />
-                </span>
+              <div className="flex items-center gap-1.5 mt-0.5 text-xs text-page-text-secondary">
+                <DirectionIcon direction={call.direction} />
+                {call.our_number_friendly_name && (
+                  <span>{call.our_number_friendly_name} &middot;</span>
+                )}
+                <PhoneLink number={call.other_party_number ?? call.caller_number} />
               </div>
             </>
           ) : (
@@ -133,19 +156,22 @@ export function CallListItem({
                       call.contact_name
                     )}
                     <span className="text-page-text-muted font-normal ml-2">
-                      <PhoneLink number={call.caller_number} />
+                      <PhoneLink number={call.other_party_number ?? call.caller_number} />
                     </span>
                   </>
                 ) : (
-                  <PhoneLink number={call.caller_number} />
+                  <PhoneLink number={call.other_party_number ?? call.caller_number} />
                 )}
               </p>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className="text-xs text-page-text-secondary">
-                  {call.contact_company && `${call.contact_company} · `}
-                  {call.direction.charAt(0).toUpperCase() + call.direction.slice(1)} call &middot;{" "}
-                  {formatDateTime(call.started_at)}
-                </span>
+              <div className="flex items-center gap-1.5 mt-0.5 text-xs text-page-text-secondary">
+                {call.contact_company && (
+                  <span>{call.contact_company} &middot;</span>
+                )}
+                <DirectionIcon direction={call.direction} />
+                {call.our_number_friendly_name && (
+                  <span>{call.our_number_friendly_name} &middot;</span>
+                )}
+                <span>{formatDateTime(call.started_at)}</span>
               </div>
             </>
           )}
@@ -157,7 +183,7 @@ export function CallListItem({
             {call.topics!.slice(0, 3).map((t) => (
               <span
                 key={t}
-                className="text-[11px] px-1.5 py-0.5 bg-page-divider text-page-text-secondary rounded"
+                className="text-xs px-2 py-0.5 bg-page-divider text-page-text-secondary rounded"
               >
                 {t}
               </span>
@@ -208,7 +234,7 @@ export function CallListItem({
                   {call.topics!.map((t) => (
                     <span
                       key={t}
-                      className="text-[11px] px-1.5 py-0.5 bg-page-divider text-page-text-secondary rounded"
+                      className="text-xs px-2 py-0.5 bg-page-divider text-page-text-secondary rounded"
                     >
                       {t}
                     </span>

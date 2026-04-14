@@ -1,6 +1,9 @@
 @import "tailwindcss";
 
 @theme {
+  --font-sans: "Figtree", ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
   /* Accent colors (same in both modes — interactive elements only) */
   --color-brand-sky: #0ea5e9;
   --color-brand-indigo: #6366f1;
@@ -32,6 +35,19 @@
   --color-page-text-muted: #94a3b8;
   --color-page-divider: #e2e8f0;
   --color-page-hover: #f1f5f9;
+}
+
+html {
+  /* Bump the root size so every rem-based Tailwind text-* scale comes
+     up uniformly. Default is 16px; 18px is a ~12% lift across the app. */
+  font-size: 18px;
+}
+
+html,
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 .dark {

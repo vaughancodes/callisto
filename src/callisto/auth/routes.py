@@ -10,7 +10,12 @@ from flask import Blueprint, abort, g, jsonify, redirect, request
 
 from callisto.config import Config
 from callisto.extensions import db
-from callisto.models import Tenant, TenantMembership
+from callisto.models import (
+    Organization,
+    OrganizationMembership,
+    Tenant,
+    TenantMembership,
+)
 from callisto.models.user import User
 
 auth_bp = Blueprint("auth", __name__)
@@ -105,9 +110,56 @@ def google_callback():
     )
 
 
+def _accessible_tenants(user: User) -> list[Tenant]:
+    """Tenants the user can read: superadmin → all; otherwise direct
+    memberships ∪ tenants of orgs the user belongs to."""
+    if user.is_superadmin:
+        return Tenant.query.order_by(Tenant.name).all()
+
+    direct_ids = {
+        m.tenant_id for m in TenantMembership.query.filter_by(user_id=user.id).all()
+    }
+    org_ids = [
+        m.organization_id
+        for m in OrganizationMembership.query.filter_by(user_id=user.id).all()
+    ]
+    if org_ids:
+        for t in Tenant.query.filter(Tenant.organization_id.in_(org_ids)).all():
+            direct_ids.add(t.id)
+
+    if not direct_ids:
+        return []
+    return (
+        Tenant.query.filter(Tenant.id.in_(direct_ids)).order_by(Tenant.name).all()
+    )
+
+
+def _is_org_admin(user: User, org_id) -> bool:
+    if user.is_superadmin:
+        return True
+    return (
+        OrganizationMembership.query.filter_by(
+            user_id=user.id, organization_id=org_id, is_admin=True
+        ).first()
+        is not None
+    )
+
+
+def _is_tenant_admin(user: User, tenant: Tenant) -> bool:
+    if user.is_superadmin:
+        return True
+    if _is_org_admin(user, tenant.organization_id):
+        return True
+    m = TenantMembership.query.filter_by(
+        user_id=user.id, tenant_id=tenant.id, is_admin=True
+    ).first()
+    return m is not None
+
+
 @auth_bp.route("/auth/me")
 def auth_me():
-    """Return current user, active tenant, and all tenant memberships."""
+    """Return current user, active tenant, all tenant + org memberships,
+    and effective role flags so the frontend can branch UI off them."""
     from callisto.auth.middleware import verify_jwt
     verify_jwt()
 
@@ -115,50 +167,67 @@ def auth_me():
     if not user:
         abort(401)
 
-    # Active tenant (from user.tenant_id)
+    accessible = _accessible_tenants(user)
+    accessible_ids = {t.id for t in accessible}
+
+    # Active tenant (from user.tenant_id) — fall back to first accessible if
+    # the stored one is no longer reachable.
     tenant_data = None
     is_tenant_admin = False
-    if user.tenant:
-        tenant_data = {
-            "id": str(user.tenant.id),
-            "name": user.tenant.name,
-            "slug": user.tenant.slug,
-            "description": user.tenant.description,
-            "settings": user.tenant.settings,
-        }
-        # Check if user is admin of current tenant
-        if user.is_superadmin:
-            is_tenant_admin = True
-        else:
-            m = TenantMembership.query.filter_by(
-                user_id=user.id, tenant_id=user.tenant_id, is_admin=True
-            ).first()
-            is_tenant_admin = m is not None
+    active_tenant = user.tenant
+    if active_tenant and active_tenant.id not in accessible_ids:
+        active_tenant = None
+        user.tenant_id = None
+        db.session.commit()
+    if not active_tenant and accessible:
+        active_tenant = accessible[0]
+        user.tenant_id = active_tenant.id
+        db.session.commit()
 
-    # All memberships (tenants the user can access)
+    if active_tenant:
+        tenant_data = {
+            "id": str(active_tenant.id),
+            "name": active_tenant.name,
+            "slug": active_tenant.slug,
+            "description": active_tenant.description,
+            "organization_id": str(active_tenant.organization_id),
+            "settings": active_tenant.settings,
+        }
+        is_tenant_admin = _is_tenant_admin(user, active_tenant)
+
+    # Memberships list (each tenant the user can switch to)
+    memberships = []
+    for t in accessible:
+        memberships.append({
+            "tenant_id": str(t.id),
+            "tenant_name": t.name,
+            "tenant_slug": t.slug,
+            "organization_id": str(t.organization_id),
+            "organization_name": t.organization.name if t.organization else None,
+            "is_admin": _is_tenant_admin(user, t),
+        })
+
+    # Organization memberships (so the frontend can show org-admin UI)
     if user.is_superadmin:
-        tenants = Tenant.query.order_by(Tenant.name).all()
-        memberships = [
+        orgs = Organization.query.order_by(Organization.name).all()
+        org_memberships = [
             {
-                "tenant_id": str(t.id),
-                "tenant_name": t.name,
-                "tenant_slug": t.slug,
+                "organization_id": str(o.id),
+                "organization_name": o.name,
+                "organization_slug": o.slug,
                 "is_admin": True,
             }
-            for t in tenants
+            for o in orgs
         ]
     else:
-        memberships_query = (
-            TenantMembership.query.filter_by(user_id=user.id).all()
-        )
-        memberships = [
+        org_memberships = [
             {
-                "tenant_id": str(m.tenant_id),
-                "tenant_name": m.tenant.name,
-                "tenant_slug": m.tenant.slug,
+                "organization_id": str(m.organization_id),
+                "organization_name": m.organization.name,
+                "organization_slug": m.organization.slug,
                 "is_admin": m.is_admin,
             }
-            for m in memberships_query
+            for m in OrganizationMembership.query.filter_by(user_id=user.id).all()
         ]
 
     return jsonify({
@@ -171,6 +240,7 @@ def auth_me():
         "tenant": tenant_data,
         "is_tenant_admin": is_tenant_admin,
         "memberships": memberships,
+        "organization_memberships": org_memberships,
     })
 
 
@@ -189,18 +259,22 @@ def switch_tenant():
     if not user:
         abort(401)
 
-    # Verify the user has membership (or is superadmin)
-    if not user.is_superadmin:
-        membership = TenantMembership.query.filter_by(
-            user_id=user.id, tenant_id=new_tenant_id
-        ).first()
-        if not membership:
-            return jsonify({"error": "Not a member of this tenant"}), 403
-
-    # Verify tenant exists
-    tenant = db.session.get(Tenant, new_tenant_id)
+    # Verify tenant exists. Use filter_by so the string→UUID coercion
+    # happens (db.session.get with a string PK on UUID columns returns None).
+    tenant = Tenant.query.filter_by(id=new_tenant_id).first()
     if not tenant:
         return jsonify({"error": "Tenant not found"}), 404
+
+    # Verify the user has access (direct membership, org membership, or superadmin)
+    if not user.is_superadmin:
+        direct = TenantMembership.query.filter_by(
+            user_id=user.id, tenant_id=new_tenant_id
+        ).first()
+        org_member = OrganizationMembership.query.filter_by(
+            user_id=user.id, organization_id=tenant.organization_id
+        ).first()
+        if not direct and not org_member:
+            return jsonify({"error": "Not a member of this tenant"}), 403
 
     user.tenant_id = tenant.id
     db.session.commit()

@@ -27,3 +27,7 @@ class User(db.Model):
         "TenantMembership", back_populates="user", lazy="dynamic",
         cascade="all, delete-orphan",
     )
+    organization_memberships = relationship(
+        "OrganizationMembership", back_populates="user", lazy="dynamic",
+        cascade="all, delete-orphan",
+    )

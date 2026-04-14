@@ -1,6 +1,6 @@
 # Callisto Frontend
 
-React + TypeScript + Vite dashboard for the Callisto telephony intelligence platform.
+React + TypeScript + Vite dashboard for the Callisto telephony intelligence platform. Lives at `app.yourdomain.com`. The marketing site is a separate Vite app under `../marketing/`.
 
 ## Tech Stack
 
@@ -11,6 +11,7 @@ React + TypeScript + Vite dashboard for the Callisto telephony intelligence plat
 - **TanStack React Query** for data fetching and caching
 - **Recharts** for analytics charts
 - **Lucide React** for icons
+- **Figtree** as the default font (loaded from Google Fonts)
 
 ## Getting Started
 
@@ -32,9 +33,11 @@ The dev server runs on port 5308 with API proxy to `localhost:5309`.
 | `/calls/:callId` | CallDetailPage | Transcript, insights, summary, notes |
 | `/contacts` | ContactsPage | Contact list, search, CSV import, Google sync |
 | `/contacts/:contactId` | ContactDetailPage | Contact calls, sentiment breakdown, topics, notes |
-| `/templates` | TemplatesPage | Insight template CRUD |
+| `/templates` | TemplatesPage | Insight template CRUD with inbound/outbound direction filtering |
 | `/analytics` | AnalyticsPage | Insight trends chart over time |
-| `/admin` | AdminPage | Superadmin: tenant/user management |
+| `/tenant-settings` | TenantSettingsPage | Tenant admin: business context, phone number routing (inbound/outbound, SIP credentials), members |
+| `/organization-settings` | OrganizationSettingsPage | Organization admin: org description, tenant lifecycle, number pool → tenant assignment, org admins |
+| `/admin` | AdminPage | Superadmin: organization CRUD, Twilio number pool → org assignment, user management |
 
 ## Project Structure
 
@@ -53,21 +56,26 @@ frontend/
 ├── src/
 │   ├── main.tsx                # App entry point (providers: Router, Query, Auth, Theme)
 │   ├── App.tsx                 # Route definitions
-│   ├── index.css               # Tailwind + theme tokens
+│   ├── index.css               # Tailwind + theme tokens (Figtree font, 18px root)
 │   ├── contexts/
-│   │   ├── AuthContext.tsx      # JWT auth state, Google login/logout
+│   │   ├── AuthContext.tsx      # JWT auth state, org + tenant memberships, isOrgAdmin helper
 │   │   └── ThemeContext.tsx     # Light/dark mode toggle, persists to localStorage
 │   ├── hooks/
 │   │   └── useWebSocket.ts     # Real-time insight stream from broadcaster
 │   ├── lib/
-│   │   ├── api.ts              # Fetch wrapper with JWT auth
+│   │   ├── api.ts              # Fetch wrapper with JWT auth (parses backend error fields)
 │   │   └── format.ts           # Date/time, status, sentiment formatters
 │   ├── components/
-│   │   ├── CallListItem.tsx    # Expandable call row (summary, notes, topics)
+│   │   ├── CallListItem.tsx    # Expandable call row, direction icon w/ tooltip, friendly name display
+│   │   ├── ConfirmDialog.tsx   # Reusable styled confirmation modal for destructive actions
+│   │   ├── Dropdown.tsx        # Theme-aware popover dropdown (replaces native <select>)
+│   │   ├── HelpTooltip.tsx     # Hover help icon for form fields
 │   │   ├── LinkedContact.tsx   # PhoneLink (tel:) and EmailLink (mailto:)
-│   │   └── ProtectedRoute.tsx  # Auth guard
+│   │   ├── LoadingSpinner.tsx  # PageLoadingSpinner used while queries resolve
+│   │   ├── ProtectedRoute.tsx  # Auth guard
+│   │   └── Tooltip.tsx         # Generic hover-delay tooltip (used by direction icon, sidebar buttons)
 │   ├── layouts/
-│   │   └── DashboardLayout.tsx # Sidebar + main content
+│   │   └── DashboardLayout.tsx # Sidebar + main content; tenant switcher grouped by organization
 │   └── pages/
 │       ├── LoginPage.tsx
 │       ├── AuthCallbackPage.tsx
@@ -77,6 +85,8 @@ frontend/
 │       ├── ContactDetailPage.tsx
 │       ├── TemplatesPage.tsx
 │       ├── AnalyticsPage.tsx
+│       ├── TenantSettingsPage.tsx
+│       ├── OrganizationSettingsPage.tsx
 │       └── AdminPage.tsx
 ├── index.html
 ├── package.json
@@ -152,7 +162,7 @@ The sidebar uses dark palette colors directly (not theme tokens) so it stays dar
 
 Light/dark mode is toggled via the sun/moon icon in the sidebar footer. The preference is persisted to `localStorage` and defaults to the OS preference on first visit. The toggle adds/removes the `dark` class on `<html>`, which swaps the CSS custom properties defined in `index.css`.
 
-## Authentication
+## Authentication & Roles
 
 The frontend uses JWT tokens stored in `localStorage`:
 
@@ -164,8 +174,19 @@ The frontend uses JWT tokens stored in `localStorage`:
 
 The Google access token is also stored (for Google Contacts sync).
 
+`AuthContext` exposes the user's effective role hierarchy via `/auth/me`:
+
+- `user.is_superadmin` — global access
+- `organizationMemberships` + `isOrgAdmin(orgId)` — admin of one or more orgs (implicitly admin of every tenant in those orgs)
+- `memberships` — every tenant the user can switch to (direct memberships ∪ tenants of orgs they're a member of). Each membership has its own `is_admin` flag and `organization_id`/`organization_name` for grouping
+- `isTenantAdmin` — admin of the active tenant
+
+The sidebar uses these to gate navigation: Tenant Settings appears for tenant admins, Organization Settings appears for org admins, Administration appears for superadmins. The tenant switcher in the sidebar groups its options by organization with a header per org.
+
 ## Real-time Updates
 
 The `useInsightStream` hook connects to the broadcaster WebSocket at `/ws/calls/live` (or `/ws/calls/:id/live` for a specific call). Insights arrive as JSON messages and are displayed in the live feed on the dashboard and as "Live" badges on the call detail page.
 
 The call list on the dashboard auto-refreshes every 10 seconds via React Query.
+
+Each call row shows an inbound/outbound arrow icon (with a hover tooltip) followed by the **friendly name** of the number it ran on. For inbound calls the "other party" displayed is the caller; for outbound calls it's the callee. Contact matching also runs against the appropriate side based on direction.

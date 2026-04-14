@@ -10,6 +10,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { Dropdown } from "../components/Dropdown";
 import { PageLoadingSpinner } from "../components/LoadingSpinner";
 import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
@@ -71,16 +72,17 @@ export function AnalyticsPage() {
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-page-text">Analytics</h2>
-        <select
-          value={days}
-          onChange={(e) => setDays(Number(e.target.value))}
-          className="px-3 py-2 border border-card-border rounded-lg text-sm bg-page-bg-tertiary text-page-text"
-        >
-          <option value={7}>Last 7 days</option>
-          <option value={14}>Last 14 days</option>
-          <option value={30}>Last 30 days</option>
-          <option value={90}>Last 90 days</option>
-        </select>
+        <Dropdown
+          value={String(days)}
+          onChange={(v) => setDays(Number(v))}
+          options={[
+            { value: "7", label: "Last 7 days" },
+            { value: "14", label: "Last 14 days" },
+            { value: "30", label: "Last 30 days" },
+            { value: "90", label: "Last 90 days" },
+          ]}
+          className="w-44"
+        />
       </div>
 
       <div className="bg-card-bg rounded-lg border border-card-border p-6">

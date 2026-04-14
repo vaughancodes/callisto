@@ -43,6 +43,7 @@ interface CallData {
   id: string;
   caller_number: string;
   callee_number?: string;
+  other_party_number?: string | null;
   contact_id: string | null;
   contact_name: string | null;
   contact_company: string | null;
@@ -80,8 +81,10 @@ export function CallDetailPage() {
     queryFn: () => apiFetch<CallData>(`/api/v1/calls/${callId}`),
   });
 
+  const otherPartyNumber = call?.other_party_number ?? call?.caller_number ?? "";
+
   useDocumentTitle(
-    call ? `${call.contact_name ?? call.caller_number} call` : "Call"
+    call ? `${call.contact_name ?? otherPartyNumber} call` : "Call"
   );
 
   const notesFromServer = call?.notes ?? "";
@@ -128,7 +131,7 @@ export function CallDetailPage() {
   });
 
   const direction = call?.direction
-    ? call.direction.charAt(0).toUpperCase() + call.direction.slice(1)
+    ? (call.direction.startsWith("outbound") ? "Outbound" : "Inbound")
     : "";
 
   if (callLoading || transcriptLoading || insightsLoading) {
@@ -158,8 +161,8 @@ export function CallDetailPage() {
               ) : (
                 call.contact_name
               )
-            ) : call?.caller_number ? (
-              <PhoneLink number={call.caller_number} />
+            ) : otherPartyNumber ? (
+              <PhoneLink number={otherPartyNumber} />
             ) : (
               "Loading..."
             )}
@@ -167,7 +170,7 @@ export function CallDetailPage() {
           <div className="flex items-center gap-2 mt-0.5">
             {call?.contact_name && (
               <span className="text-sm text-page-text-secondary">
-                <PhoneLink number={call.caller_number} />
+                <PhoneLink number={otherPartyNumber} />
               </span>
             )}
             {call?.contact_company && (

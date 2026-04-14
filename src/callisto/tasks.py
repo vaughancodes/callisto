@@ -166,12 +166,21 @@ def run_deep_analysis(self, pipeline_data: dict):
     tenant_obj = db.session.get(Tenant, tenant_id)
     tenant_context = tenant_obj.context if tenant_obj else None
 
-    templates = InsightTemplate.query.filter_by(
+    direction = (call.direction or "inbound")
+    template_query = InsightTemplate.query.filter_by(
         tenant_id=tenant_id, active=True
-    ).all()
+    )
+    if direction.startswith("outbound"):
+        template_query = template_query.filter_by(outbound_enabled=True)
+    else:
+        template_query = template_query.filter_by(inbound_enabled=True)
+    templates = template_query.all()
 
     if not templates:
-        logger.info("No active templates for tenant %s — skipping deep analysis", tenant_id)
+        logger.info(
+            "No active %s templates for tenant %s — skipping deep analysis",
+            direction, tenant_id,
+        )
         return pipeline_data
 
     template_descriptions = "\n".join(

@@ -1,8 +1,30 @@
-from flask import jsonify, request
+from flask import g, jsonify, request
 
+from callisto import twilio_client
 from callisto.api import bp
+from callisto.auth.middleware import is_tenant_member
 from callisto.extensions import db
-from callisto.models import Call, CallSummary, Insight, Transcript
+from callisto.models import Call, CallSummary, Insight, PhoneNumber, Transcript
+
+
+def _our_number_e164(c: Call) -> str | None:
+    direction = c.direction or "inbound"
+    return c.caller_number if direction.startswith("outbound") else c.callee_number
+
+
+def _other_party_number(c: Call) -> str | None:
+    """The number of the party on the other end of the call: for inbound
+    that's the caller, for outbound that's the callee."""
+    direction = c.direction or "inbound"
+    return c.callee_number if direction.startswith("outbound") else c.caller_number
+
+
+def _our_number_friendly_name(c: Call) -> str | None:
+    our_e164 = _our_number_e164(c)
+    if not our_e164:
+        return None
+    pn = PhoneNumber.query.filter_by(e164=our_e164).first()
+    return pn.friendly_name if pn else None
 
 
 def _serialize_call_list_item(c: Call) -> dict:
@@ -17,6 +39,9 @@ def _serialize_call_list_item(c: Call) -> dict:
         "source": c.source,
         "direction": c.direction,
         "caller_number": c.caller_number,
+        "callee_number": c.callee_number,
+        "other_party_number": _other_party_number(c),
+        "our_number_friendly_name": _our_number_friendly_name(c),
         "contact_id": str(c.contact_id) if c.contact_id else None,
         "contact_name": c.contact.name if c.contact else None,
         "contact_company": c.contact.company if c.contact else None,
@@ -62,6 +87,9 @@ def get_call(call_id):
         "source": call.source,
         "direction": call.direction,
         "caller_number": call.caller_number,
+        "callee_number": call.callee_number,
+        "other_party_number": _other_party_number(call),
+        "our_number_friendly_name": _our_number_friendly_name(call),
         "contact_id": str(call.contact_id) if call.contact_id else None,
         "contact_name": call.contact.name if call.contact else None,
         "contact_company": call.contact.company if call.contact else None,
@@ -130,6 +158,46 @@ def get_call_insights(call_id):
         }
         for i in insights
     ])
+
+
+@bp.route("/tenants/<uuid:tenant_id>/calls/outbound", methods=["POST"])
+def initiate_outbound_call(tenant_id):
+    """Place an outbound call from one of the tenant's outbound-enabled
+    numbers. Returns the new call's external_id (Twilio Call SID).
+    """
+    if not is_tenant_member(tenant_id):
+        return jsonify({"error": "Tenant access required"}), 403
+
+    data = request.get_json() or {}
+    from_number_id = data.get("from_number_id")
+    to_number = (data.get("to_number") or "").strip()
+    if not from_number_id or not to_number:
+        return jsonify({
+            "error": "from_number_id and to_number are required",
+        }), 400
+
+    pn = PhoneNumber.query.filter_by(id=from_number_id).first()
+    if not pn or str(pn.tenant_id) != str(tenant_id):
+        return jsonify({"error": "Number is not assigned to this tenant"}), 404
+    if not pn.outbound_enabled:
+        return jsonify({
+            "error": f"{pn.e164} is not enabled for outbound calls",
+        }), 400
+
+    try:
+        sid = twilio_client.initiate_outbound_call(
+            from_e164=pn.e164, to_e164=to_number
+        )
+    except twilio_client.TwilioClientError as exc:
+        return jsonify({"error": str(exc)}), 502
+
+    # The Call row will be created when Twilio hits /webhooks/twilio/voice
+    # and the ingestion server receives the Media Stream `start` event.
+    return jsonify({
+        "external_id": sid,
+        "from_number": pn.e164,
+        "to_number": to_number,
+    }), 202
 
 
 @bp.route("/calls/<uuid:call_id>/summary", methods=["GET"])

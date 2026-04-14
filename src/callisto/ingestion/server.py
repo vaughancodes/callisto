@@ -371,18 +371,30 @@ def _create_call_record(session: CallSession):
             logger.info("Call record already exists for %s", session.call_sid)
             return
 
-        # Look up contact by caller phone number
+        # Look up contact by the OTHER party — for inbound that's the caller
+        # (From), for outbound that's the callee (To). Either way it's the
+        # external number that isn't ours.
         contact_id = None
-        caller = session.custom_params.get("from", "")
-        logger.info("Contact lookup: tenant=%s caller='%s'", session.tenant_id, caller)
-        if session.tenant_id and caller:
+        from_param = session.custom_params.get("from", "")
+        to_param = session.custom_params.get("to", "")
+        direction_param = session.custom_params.get("direction", "inbound")
+        other_party = (
+            to_param if direction_param.startswith("outbound") else from_param
+        )
+        logger.info(
+            "Contact lookup: tenant=%s direction=%s other_party='%s'",
+            session.tenant_id, direction_param, other_party,
+        )
+        if session.tenant_id and other_party:
             from callisto.api.contacts import lookup_contact_by_phone
-            contact = lookup_contact_by_phone(session.tenant_id, caller)
+            contact = lookup_contact_by_phone(session.tenant_id, other_party)
             if contact:
                 contact_id = contact.id
-                logger.info("Matched caller %s to contact %s", caller, contact.name)
+                logger.info(
+                    "Matched %s to contact %s", other_party, contact.name
+                )
             else:
-                logger.info("No contact match for %s", caller)
+                logger.info("No contact match for %s", other_party)
 
         call = Call(
             tenant_id=session.tenant_id,
