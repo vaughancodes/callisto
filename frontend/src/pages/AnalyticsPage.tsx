@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import {
   CartesianGrid,
@@ -10,6 +10,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { PageLoadingSpinner } from "../components/LoadingSpinner";
 import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { apiFetch } from "../lib/api";
@@ -36,13 +37,14 @@ export function AnalyticsPage() {
   const { tenant } = useAuth();
   const [days, setDays] = useState(30);
 
-  const { data: trends } = useQuery({
+  const { data: trends, isLoading } = useQuery({
     queryKey: ["analytics", tenant?.id, days],
     queryFn: () =>
       apiFetch<TrendPoint[]>(
         `/api/v1/tenants/${tenant!.id}/analytics/insights?days=${days}`
       ),
     enabled: !!tenant,
+    placeholderData: keepPreviousData,
   });
 
   // Transform for recharts: pivot to {date, template1: count, template2: count, ...}
@@ -59,6 +61,10 @@ export function AnalyticsPage() {
       chartData.push({ date, ...counts });
     }
     chartData.sort((a, b) => (a.date as string).localeCompare(b.date as string));
+  }
+
+  if (isLoading) {
+    return <PageLoadingSpinner />;
   }
 
   return (

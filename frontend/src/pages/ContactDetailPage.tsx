@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { CallListItem, type CallListData } from "../components/CallListItem";
 import { EmailLink, PhoneLink } from "../components/LinkedContact";
+import { PageLoadingSpinner } from "../components/LoadingSpinner";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { apiFetch } from "../lib/api";
 import { capitalize } from "../lib/format";
@@ -74,11 +75,7 @@ export function ContactDetailPage() {
   });
 
   if (isLoading || !contact) {
-    return (
-      <div className="p-6">
-        <div className="text-page-text-muted">Loading...</div>
-      </div>
-    );
+    return <PageLoadingSpinner />;
   }
 
   const { sentiment_summary: sentiment, top_topics } = contact;
@@ -93,7 +90,7 @@ export function ContactDetailPage() {
       <div className="flex items-start gap-4 mb-6">
         <button
           onClick={() => navigate(-1)}
-          className="p-2 hover:bg-page-hover rounded-lg transition-colors mt-1"
+          className="p-2 hover:bg-page-hover rounded-lg transition-colors shrink-0 mt-0.5"
         >
           <ArrowLeft className="w-5 h-5 text-page-text" />
         </button>

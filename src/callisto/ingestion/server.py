@@ -66,13 +66,22 @@ class CallSession:
         self.all_pcm = bytearray()
         self.started_at: datetime | None = None
         self.transcript_chunk_index = 0
-        self.deepgram = None
+        # One Deepgram streamer per track: "external" (inbound) and "internal" (outbound)
+        self.deepgram_external = None
+        self.deepgram_internal = None
         self.redis_client = None
         self.stt_provider: str = "whisper"
 
-        # Whisper batching state
-        self.transcription_buffer = bytearray()
-        self.transcription_offset_ms = 0
+        # Whisper batching state — one buffer per track so each speaker is
+        # transcribed independently and labeled correctly.
+        self.whisper_buffers: dict[str, bytearray] = {
+            "external": bytearray(),
+            "internal": bytearray(),
+        }
+        self.whisper_offsets_ms: dict[str, int] = {
+            "external": 0,
+            "internal": 0,
+        }
 
 
 async def handle_twilio_stream(websocket):
@@ -123,6 +132,11 @@ async def handle_twilio_stream(websocket):
                 if not payload:
                     continue
 
+                # Twilio sends `track` as "inbound" or "outbound" when
+                # tracks="both_tracks". We route each to the matching Deepgram
+                # stream so external/internal audio are transcribed independently.
+                track = media.get("track", "inbound")
+
                 pcm_16khz = decode_twilio_media(payload)
                 session.all_pcm.extend(pcm_16khz)
 
@@ -130,14 +144,20 @@ async def handle_twilio_stream(websocket):
                 for chunk in chunks:
                     session.chunk_index += 1
 
-                if session.stt_provider == "deepgram" and session.deepgram:
-                    await session.deepgram.send_audio(pcm_16khz)
+                if session.stt_provider == "deepgram":
+                    if track == "outbound" and session.deepgram_internal:
+                        await session.deepgram_internal.send_audio(pcm_16khz)
+                    elif session.deepgram_external:
+                        await session.deepgram_external.send_audio(pcm_16khz)
                 elif session.stt_provider == "whisper":
-                    session.transcription_buffer.extend(pcm_16khz)
+                    # Whisper fallback — buffer each track independently so
+                    # both speakers get transcribed with the right label.
+                    speaker = "internal" if track == "outbound" else "external"
+                    session.whisper_buffers[speaker].extend(pcm_16khz)
                     from callisto.config import Config
                     segment_bytes = 16000 * 2 * Config.WHISPER_SEGMENT_SECONDS
-                    if len(session.transcription_buffer) >= segment_bytes:
-                        _whisper_transcribe_and_publish(session)
+                    if len(session.whisper_buffers[speaker]) >= segment_bytes:
+                        _whisper_transcribe_and_publish(session, speaker)
 
             elif event == "stop":
                 logger.info(
@@ -151,10 +171,15 @@ async def handle_twilio_stream(websocket):
                     session.chunk_index += 1
 
                 # Flush STT
-                if session.stt_provider == "deepgram" and session.deepgram:
-                    await session.deepgram.close()
-                elif session.stt_provider == "whisper" and len(session.transcription_buffer) > 0:
-                    _whisper_transcribe_and_publish(session)
+                if session.stt_provider == "deepgram":
+                    if session.deepgram_external:
+                        await session.deepgram_external.close()
+                    if session.deepgram_internal:
+                        await session.deepgram_internal.close()
+                elif session.stt_provider == "whisper":
+                    for speaker in ("external", "internal"):
+                        if len(session.whisper_buffers[speaker]) > 0:
+                            _whisper_transcribe_and_publish(session, speaker)
 
                 # End-of-stream marker
                 if session.redis_client and session.call_sid:
@@ -174,8 +199,10 @@ async def handle_twilio_stream(websocket):
 
     except websockets.exceptions.ConnectionClosed:
         logger.info("WebSocket closed: call_sid=%s", session.call_sid)
-        if session.deepgram:
-            await session.deepgram.close()
+        if session.deepgram_external:
+            await session.deepgram_external.close()
+        if session.deepgram_internal:
+            await session.deepgram_internal.close()
         if session.call_sid and len(session.all_pcm) > 0:
             _on_call_end(session)
 
@@ -185,7 +212,7 @@ async def handle_twilio_stream(websocket):
 # ---------------------------------------------------------------------------
 
 async def _start_deepgram(session: CallSession):
-    """Initialize Deepgram streaming for this call session."""
+    """Initialize two Deepgram streams — one per track (external + internal)."""
     from callisto.config import Config
     from callisto.transcription.deepgram import DeepgramStreamer
 
@@ -195,21 +222,30 @@ async def _start_deepgram(session: CallSession):
         session.stt_provider = "whisper"
         return
 
-    async def on_transcript(*, text, start_ms, end_ms, is_final, confidence):
+    async def on_transcript(*, text, start_ms, end_ms, is_final, confidence, speaker):
         if not text.strip() or not is_final:
             return
-        _publish_chunk(session, text, start_ms, end_ms, confidence)
+        _publish_chunk(session, text, start_ms, end_ms, confidence, speaker)
 
-    session.deepgram = DeepgramStreamer(
+    session.deepgram_external = DeepgramStreamer(
         api_key=api_key,
         on_transcript=on_transcript,
         call_id=session.call_sid or "",
+        speaker="external",
+    )
+    session.deepgram_internal = DeepgramStreamer(
+        api_key=api_key,
+        on_transcript=on_transcript,
+        call_id=session.call_sid or "",
+        speaker="internal",
     )
     try:
-        await session.deepgram.connect()
+        await session.deepgram_external.connect()
+        await session.deepgram_internal.connect()
     except Exception:
         logger.exception("Failed to connect to Deepgram — falling back to whisper")
-        session.deepgram = None
+        session.deepgram_external = None
+        session.deepgram_internal = None
         session.stt_provider = "whisper"
 
 
@@ -217,19 +253,18 @@ async def _start_deepgram(session: CallSession):
 # Whisper batched segments
 # ---------------------------------------------------------------------------
 
-def _whisper_transcribe_and_publish(session: CallSession):
-    """Run Whisper on the accumulated audio segment and publish results."""
+def _whisper_transcribe_and_publish(session: CallSession, speaker: str):
+    """Run Whisper on the accumulated audio segment for one track."""
     from callisto.config import Config
     from callisto.transcription.whisper import transcribe_audio
 
-    pcm_data = bytes(session.transcription_buffer)
-    session.transcription_buffer = bytearray()
+    pcm_data = bytes(session.whisper_buffers[speaker])
+    session.whisper_buffers[speaker] = bytearray()
 
     duration_ms = len(pcm_data) // (16000 * 2) * 1000
-    start_ms = session.transcription_offset_ms
-    session.transcription_offset_ms = start_ms + duration_ms
+    start_ms = session.whisper_offsets_ms[speaker]
+    session.whisper_offsets_ms[speaker] = start_ms + duration_ms
 
-    # Write temp WAV for Whisper
     tmp = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
     try:
         with wave.open(tmp.name, "wb") as wf:
@@ -241,7 +276,9 @@ def _whisper_transcribe_and_publish(session: CallSession):
         model = os.environ.get("WHISPER_MODEL", Config.WHISPER_MODEL)
         segments = transcribe_audio(tmp.name, model_name=model)
     except Exception:
-        logger.exception("Whisper transcription failed for %s", session.call_sid)
+        logger.exception(
+            "Whisper transcription failed for %s (%s)", session.call_sid, speaker,
+        )
         return
     finally:
         Path(tmp.name).unlink(missing_ok=True)
@@ -250,19 +287,29 @@ def _whisper_transcribe_and_publish(session: CallSession):
         adjusted_start = start_ms + seg["start_ms"]
         adjusted_end = start_ms + seg["end_ms"]
         confidence = max(0.0, min(1.0, math.exp(seg.get("confidence", -0.5))))
-        _publish_chunk(session, seg["text"], adjusted_start, adjusted_end, confidence)
+        _publish_chunk(session, seg["text"], adjusted_start, adjusted_end, confidence, speaker)
 
 
 # ---------------------------------------------------------------------------
 # Shared: publish transcript chunk to Redis + Postgres
 # ---------------------------------------------------------------------------
 
-def _publish_chunk(session: CallSession, text: str, start_ms: int, end_ms: int, confidence: float):
+def _publish_chunk(
+    session: CallSession,
+    text: str,
+    start_ms: int,
+    end_ms: int,
+    confidence: float,
+    speaker: str = "unknown",
+):
     """Publish a transcript chunk to Redis Streams and persist to Postgres."""
     chunk_idx = session.transcript_chunk_index
     session.transcript_chunk_index += 1
 
-    logger.info("Chunk %d: [%d-%dms] %s", chunk_idx, start_ms, end_ms, text[:60])
+    logger.info(
+        "Chunk %d [%s]: [%d-%dms] %s",
+        chunk_idx, speaker, start_ms, end_ms, text[:60],
+    )
 
     if session.redis_client and session.call_sid:
         stream_key = f"call:{session.call_sid}:chunks"
@@ -273,19 +320,21 @@ def _publish_chunk(session: CallSession, text: str, start_ms: int, end_ms: int, 
             "start_ms": str(start_ms),
             "end_ms": str(end_ms),
             "chunk_index": str(chunk_idx),
-            "speaker": "unknown",
+            "speaker": speaker,
             "confidence": str(confidence),
             "type": "transcript",
         })
 
-    _persist_transcript_chunk(session, text, start_ms, end_ms, chunk_idx, confidence)
+    _persist_transcript_chunk(
+        session, text, start_ms, end_ms, chunk_idx, confidence, speaker
+    )
 
 
 # ---------------------------------------------------------------------------
 # Postgres helpers
 # ---------------------------------------------------------------------------
 
-def _persist_transcript_chunk(session, text, start_ms, end_ms, chunk_idx, confidence):
+def _persist_transcript_chunk(session, text, start_ms, end_ms, chunk_idx, confidence, speaker="unknown"):
     from callisto.app import create_app
     from callisto.extensions import db
     from callisto.models import Call, Transcript
@@ -299,7 +348,7 @@ def _persist_transcript_chunk(session, text, start_ms, end_ms, chunk_idx, confid
         chunk = Transcript(
             call_id=call.id,
             tenant_id=call.tenant_id,
-            speaker="unknown",
+            speaker=speaker,
             text=text,
             start_ms=start_ms,
             end_ms=end_ms,

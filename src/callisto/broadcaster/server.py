@@ -1,4 +1,4 @@
-"""WebSocket broadcaster for real-time insight delivery to agent dashboards.
+"""WebSocket broadcaster for real-time insight delivery to dashboards.
 
 Clients connect to /ws/calls/{call_id}/live to receive insights for a specific
 call, or /ws/calls/live to receive insights for all calls.

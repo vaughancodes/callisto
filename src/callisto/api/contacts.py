@@ -110,6 +110,16 @@ def create_contact(tenant_id):
     raw_phones = data.get("phone_numbers", [])
     phones = [p for p in (_normalize_phone(r) for r in raw_phones) if p]
 
+    conflict = _find_phone_conflict(tenant_id, phones)
+    if conflict:
+        other, phone = conflict
+        return jsonify({
+            "error": (
+                f"Phone number {phone} already belongs to contact "
+                f"'{other.name}'."
+            ),
+        }), 409
+
     contact = Contact(
         tenant_id=tenant_id,
         name=data["name"],
@@ -119,6 +129,8 @@ def create_contact(tenant_id):
         metadata_=data.get("metadata", {}),
     )
     db.session.add(contact)
+    db.session.flush()
+    _backfill_contact(contact)
     db.session.commit()
     return jsonify(_serialize_contact(contact)), 201
 
@@ -194,9 +206,25 @@ def update_contact(contact_id):
     if "company" in data:
         contact.company = data["company"]
     if "phone_numbers" in data:
-        contact.phone_numbers = [
+        new_phones = [
             p for p in (_normalize_phone(r) for r in data["phone_numbers"]) if p
         ]
+        conflict = _find_phone_conflict(
+            contact.tenant_id, new_phones, exclude_id=contact.id
+        )
+        if conflict:
+            other, phone = conflict
+            return jsonify({
+                "error": (
+                    f"Phone number {phone} already belongs to contact "
+                    f"'{other.name}'."
+                ),
+            }), 409
+        old_phones = list(contact.phone_numbers or [])
+        removed = [p for p in old_phones if p not in set(new_phones)]
+        contact.phone_numbers = new_phones
+        if removed:
+            _unlink_calls_by_phones(contact, removed)
     if "email" in data:
         contact.email = data["email"]
     if "notes" in data:
@@ -204,6 +232,7 @@ def update_contact(contact_id):
     if "metadata" in data:
         contact.metadata_ = data["metadata"]
 
+    _backfill_contact(contact)
     db.session.commit()
     return jsonify(_serialize_contact(contact))
 
@@ -219,13 +248,77 @@ def update_contact_notes(contact_id):
 
 @bp.route("/contacts/<uuid:contact_id>", methods=["DELETE"])
 def delete_contact(contact_id):
+    from callisto.models import Call
+
     contact = db.get_or_404(Contact, contact_id)
+    Call.query.filter_by(contact_id=contact.id).update(
+        {"contact_id": None}, synchronize_session=False
+    )
     db.session.delete(contact)
     db.session.commit()
     return "", 204
 
 
 # --- Backfill contacts on existing calls ---
+
+def _find_phone_conflict(
+    tenant_id, phones: list[str], exclude_id=None
+) -> tuple[Contact, str] | None:
+    """Return (contact, phone) if any of the given phones already belong to
+    another contact in the tenant. Returns None if no conflict."""
+    if not phones:
+        return None
+    phone_set = set(phones)
+    query = Contact.query.filter_by(tenant_id=tenant_id)
+    if exclude_id is not None:
+        query = query.filter(Contact.id != exclude_id)
+    for c in query.all():
+        for p in (c.phone_numbers or []):
+            if p in phone_set:
+                return c, p
+    return None
+
+
+def _unlink_calls_by_phones(contact: Contact, phones: list[str]) -> int:
+    """Null contact_id on any call currently linked to this contact whose
+    caller_number normalizes to one of the given phones."""
+    from callisto.models import Call
+
+    if not phones:
+        return 0
+    phone_set = set(phones)
+    calls = Call.query.filter_by(contact_id=contact.id).all()
+    unlinked = 0
+    for call in calls:
+        normalized = _normalize_phone(call.caller_number or "")
+        if normalized and normalized in phone_set:
+            call.contact_id = None
+            unlinked += 1
+    return unlinked
+
+
+def _backfill_contact(contact: Contact) -> int:
+    """Attach this contact to any unmatched calls whose number matches.
+
+    Only touches calls that don't already have a contact assigned.
+    """
+    from callisto.models import Call
+
+    phones = {p for p in (contact.phone_numbers or []) if p}
+    if not phones:
+        return 0
+
+    calls = Call.query.filter_by(
+        tenant_id=contact.tenant_id, contact_id=None
+    ).all()
+    matched = 0
+    for call in calls:
+        normalized = _normalize_phone(call.caller_number or "")
+        if normalized and normalized in phones:
+            call.contact_id = contact.id
+            matched += 1
+    return matched
+
 
 def _backfill_contacts(tenant_id) -> int:
     """Match unmatched calls against contacts by phone number. Returns count matched."""

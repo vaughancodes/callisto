@@ -11,7 +11,7 @@
 
 ---
 
-Callisto listens to live phone calls via Twilio Media Streams, transcribes audio in real time with Deepgram or Whisper, and evaluates configurable insight templates against the conversation using any OpenAI-compatible LLM. Detected insights are delivered to agent dashboards over WebSocket as the call happens, with deep post-call analysis, summaries, and trend analytics.
+Callisto listens to live phone calls via Twilio Media Streams, transcribes audio in real time with Deepgram or Whisper, and evaluates configurable insight templates against the conversation using any OpenAI-compatible LLM. Detected insights are delivered to dashboards over WebSocket as the call happens, with deep post-call analysis, summaries, and trend analytics.
 
 ## Architecture
 
@@ -175,13 +175,17 @@ Log in via Google OAuth at `https://your-domain.com`. If your email is in `SUPER
 
 ### 7. Add insight templates
 
-Go to Templates and create templates that define what to detect in calls:
+Go to Templates and create templates that define what Callisto should look
+for in calls. Each template is a natural-language rule the LLM evaluates
+against the transcript. Some **example** templates to get you started:
 
 | Name | Category | Severity | Prompt |
 |------|----------|----------|--------|
-| Churn Intent | sales | critical | Detect if the caller expresses intent to cancel, leave, or switch providers. |
-| Frustration | support | warning | Detect if the caller expresses frustration, anger, or complaints. |
-| Upsell Opportunity | sales | info | Detect if the caller asks about upgrades or additional features. |
+| Follow-up Request | custom | info | Detect if the external party asks for a callback or requests that someone follow up with them. |
+| Pricing Question | custom | info | Detect if the external party asks about pricing, cost, fees, or billing. |
+| Topic Mention | custom | info | Detect if the external party brings up a specific topic relevant to your business. |
+
+These are just examples — define whatever makes sense for your own use case.
 
 ### 8. Make a call
 

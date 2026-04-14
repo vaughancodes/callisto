@@ -14,7 +14,7 @@ export function LoginPage() {
   );
 
   useEffect(() => {
-    const timer = setTimeout(() => setShowButton(true), 3500);
+    const timer = setTimeout(() => setShowButton(true), 3000);
     return () => clearTimeout(timer);
   }, []);
 

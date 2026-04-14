@@ -74,7 +74,7 @@ def twilio_voice_webhook():
     twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Start>
-        <Stream url="{ws_scheme}://{ws_host}/ws/twilio/stream">
+        <Stream url="{ws_scheme}://{ws_host}/ws/twilio/stream" track="both_tracks">
             <Parameter name="tenant_id" value="{tenant.id}"/>
             <Parameter name="from" value="{from_number}"/>
             <Parameter name="to" value="{to_number}"/>

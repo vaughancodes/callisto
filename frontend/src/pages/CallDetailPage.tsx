@@ -3,6 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { PhoneLink } from "../components/LinkedContact";
+import { PageLoadingSpinner } from "../components/LoadingSpinner";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useInsightStream } from "../hooks/useWebSocket";
 import { apiFetch } from "../lib/api";
@@ -20,6 +21,8 @@ interface TranscriptChunk {
 interface InsightData {
   id: string;
   template_id: string;
+  template_name: string | null;
+  template_severity: string | null;
   source: string;
   detected_at: string;
   confidence: number;
@@ -72,7 +75,7 @@ export function CallDetailPage() {
   const queryClient = useQueryClient();
   const [editingNotes, setEditingNotes] = useState(false);
 
-  const { data: call } = useQuery({
+  const { data: call, isLoading: callLoading } = useQuery({
     queryKey: ["call", callId],
     queryFn: () => apiFetch<CallData>(`/api/v1/calls/${callId}`),
   });
@@ -90,14 +93,14 @@ export function CallDetailPage() {
     setLastSynced(notesFromServer);
   }
 
-  const { data: transcript } = useQuery({
+  const { data: transcript, isLoading: transcriptLoading } = useQuery({
     queryKey: ["transcript", callId],
     queryFn: () =>
       apiFetch<TranscriptChunk[]>(`/api/v1/calls/${callId}/transcript`),
     refetchInterval: call?.status === "active" ? 5000 : false,
   });
 
-  const { data: insights } = useQuery({
+  const { data: insights, isLoading: insightsLoading } = useQuery({
     queryKey: ["insights", callId],
     queryFn: () =>
       apiFetch<InsightData[]>(`/api/v1/calls/${callId}/insights`),
@@ -128,13 +131,17 @@ export function CallDetailPage() {
     ? call.direction.charAt(0).toUpperCase() + call.direction.slice(1)
     : "";
 
+  if (callLoading || transcriptLoading || insightsLoading) {
+    return <PageLoadingSpinner />;
+  }
+
   return (
     <div className="p-6">
       {/* Header */}
-      <div className="flex items-center gap-4 mb-6">
+      <div className="flex items-start gap-4 mb-6">
         <button
           onClick={() => navigate(-1)}
-          className="p-2 hover:bg-page-hover rounded-lg transition-colors"
+          className="p-2 hover:bg-page-hover rounded-lg transition-colors shrink-0 mt-0.5"
         >
           <ArrowLeft className="w-5 h-5 text-page-text" />
         </button>
@@ -186,12 +193,32 @@ export function CallDetailPage() {
               <h3 className="font-semibold text-page-text">Transcript</h3>
             </div>
             <div className="p-4 max-h-[600px] overflow-auto space-y-3">
-              {transcript?.map((chunk) => (
-                <div key={chunk.chunk_index} className="flex gap-3">
+              {transcript?.map((chunk, i) => (
+                <div
+                  key={`${chunk.chunk_index}-${i}`}
+                  className="flex gap-3"
+                >
                   <span className="text-xs text-page-text-muted w-12 shrink-0 pt-0.5 text-right">
                     {formatTime(chunk.start_ms)}
                   </span>
-                  <p className="text-sm text-page-text">{chunk.text}</p>
+                  <div className="flex-1 min-w-0">
+                    {chunk.speaker && chunk.speaker !== "unknown" && (
+                      <span
+                        className={`text-[10px] uppercase font-semibold tracking-wide mr-2 ${
+                          chunk.speaker === "external"
+                            ? "text-accent-light"
+                            : chunk.speaker === "internal"
+                              ? "text-accent-periwinkle"
+                              : "text-page-text-muted"
+                        }`}
+                      >
+                        {chunk.speaker}
+                      </span>
+                    )}
+                    <span className="text-sm text-page-text">
+                      {chunk.text}
+                    </span>
+                  </div>
                 </div>
               ))}
               {(!transcript || transcript.length === 0) && (
@@ -283,7 +310,7 @@ export function CallDetailPage() {
                 <div key={ins.id} className="p-3">
                   <div className="flex items-center gap-2">
                     <span
-                      className={`text-xs px-1.5 py-0.5 rounded ${
+                      className={`text-xs px-1.5 py-0.5 rounded shrink-0 ${
                         ins.source === "realtime"
                           ? "bg-brand-sky/10 text-brand-sky"
                           : "bg-page-divider text-page-text-secondary"
@@ -291,10 +318,14 @@ export function CallDetailPage() {
                     >
                       {formatInsightSource(ins.source)}
                     </span>
-                    <span className="text-sm font-medium text-page-text flex-1">
-                      {ins.confidence > 0 &&
-                        `${Math.round(ins.confidence * 100)}%`}
+                    <span className="text-sm font-medium text-page-text flex-1 truncate">
+                      {ins.template_name ?? "Unknown template"}
                     </span>
+                    {ins.confidence > 0 && (
+                      <span className="text-xs text-page-text-muted shrink-0">
+                        {Math.round(ins.confidence * 100)}%
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-page-text-secondary mt-1 italic">
                     &ldquo;{ins.evidence}&rdquo;

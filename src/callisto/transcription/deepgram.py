@@ -21,19 +21,27 @@ DEEPGRAM_WS_URL = "wss://api.deepgram.com/v1/listen"
 
 
 class DeepgramStreamer:
-    """Manages a streaming WebSocket connection to Deepgram for one call."""
+    """Manages a streaming WebSocket connection to Deepgram for one call track."""
 
-    def __init__(self, api_key: str, on_transcript, call_id: str = ""):
+    def __init__(
+        self,
+        api_key: str,
+        on_transcript,
+        call_id: str = "",
+        speaker: str = "unknown",
+    ):
         """
         Args:
             api_key: Deepgram API key.
-            on_transcript: Async callback called with (text, start_ms, end_ms, is_final)
-                           for each transcript fragment.
+            on_transcript: Async callback called with (text, start_ms, end_ms, is_final,
+                           confidence, speaker) for each transcript fragment.
             call_id: For logging.
+            speaker: Label for the speaker on this track (e.g. "external", "internal").
         """
         self.api_key = api_key
         self.on_transcript = on_transcript
         self.call_id = call_id
+        self.speaker = speaker
         self._ws = None
         self._receive_task = None
         self._closed = False
@@ -136,6 +144,7 @@ class DeepgramStreamer:
                         end_ms=end_ms,
                         is_final=is_final,
                         confidence=confidence,
+                        speaker=self.speaker,
                     )
 
                 elif msg_type == "Metadata":

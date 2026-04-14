@@ -1,8 +1,15 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Upload, X } from "lucide-react";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { AlertCircle, Plus, Upload, X } from "lucide-react";
 import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmailLink, PhoneLink } from "../components/LinkedContact";
+import { PageLoadingSpinner } from "../components/LoadingSpinner";
 import { useAuth, getGoogleToken } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { apiFetch } from "../lib/api";
@@ -26,6 +33,8 @@ export function ContactsPage() {
   const [showImport, setShowImport] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [search, setSearch] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<ContactData | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const { data, isLoading } = useQuery({
@@ -35,6 +44,7 @@ export function ContactsPage() {
         `/api/v1/tenants/${tenant!.id}/contacts?per_page=100&q=${encodeURIComponent(search)}`
       ),
     enabled: !!tenant,
+    placeholderData: keepPreviousData,
   });
 
   const createMutation = useMutation({
@@ -45,8 +55,10 @@ export function ContactsPage() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
+      setFormError(null);
       setShowForm(false);
     },
+    onError: (err: Error) => setFormError(err.message),
   });
 
   const updateMutation = useMutation({
@@ -58,8 +70,10 @@ export function ContactsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["contacts"] });
       setEditing(null);
+      setFormError(null);
       setShowForm(false);
     },
+    onError: (err: Error) => setFormError(err.message),
   });
 
   const deleteMutation = useMutation({
@@ -70,6 +84,7 @@ export function ContactsPage() {
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setFormError(null);
     const form = new FormData(e.currentTarget);
     const phones = (form.get("phone_numbers") as string)
       .split(",")
@@ -130,6 +145,10 @@ export function ContactsPage() {
     }
   };
 
+  if (isLoading) {
+    return <PageLoadingSpinner />;
+  }
+
   return (
     <div className="p-6">
       <div className="flex items-center justify-between mb-6">
@@ -156,7 +175,7 @@ export function ContactsPage() {
             Import CSV
           </button>
           <button
-            onClick={() => { setEditing(null); setShowForm(true); }}
+            onClick={() => { setEditing(null); setFormError(null); setShowForm(true); }}
             className="flex items-center gap-2 px-3 py-1.5 bg-brand-sky text-white rounded-lg hover:bg-brand-sky/80 text-sm"
           >
             <Plus className="w-4 h-4" />
@@ -178,9 +197,6 @@ export function ContactsPage() {
 
       {/* Contacts table */}
       <div className="bg-card-bg rounded-lg border border-card-border">
-        {isLoading ? (
-          <div className="p-8 text-center text-page-text-muted">Loading...</div>
-        ) : (
           <table className="w-full">
             <thead>
               <tr className="border-b border-card-border text-left text-sm text-page-text-secondary">
@@ -227,13 +243,13 @@ export function ContactsPage() {
                   </td>
                   <td className="p-4 flex gap-2">
                     <button
-                      onClick={() => { setEditing(c); setShowForm(true); }}
+                      onClick={() => { setEditing(c); setFormError(null); setShowForm(true); }}
                       className="text-xs px-2.5 py-1 border border-brand-sky text-brand-sky rounded-md hover:bg-brand-sky/10 transition-colors"
                     >
                       Edit
                     </button>
                     <button
-                      onClick={() => deleteMutation.mutate(c.id)}
+                      onClick={() => setDeleting(c)}
                       className="text-xs px-2.5 py-1 border border-danger text-danger rounded-md hover:bg-danger/10 transition-colors"
                     >
                       Delete
@@ -250,8 +266,25 @@ export function ContactsPage() {
               )}
             </tbody>
           </table>
-        )}
       </div>
+
+      <ConfirmDialog
+        open={!!deleting}
+        title="Delete Contact"
+        message={
+          <>
+            Are you sure you want to delete{" "}
+            <span className="font-semibold text-page-text">{deleting?.name}</span>?
+          </>
+        }
+        warning="This will unlink the contact from any calls they're associated with. The calls themselves will not be deleted."
+        confirmLabel="Delete Contact"
+        onConfirm={() => {
+          if (deleting) deleteMutation.mutate(deleting.id);
+          setDeleting(null);
+        }}
+        onCancel={() => setDeleting(null)}
+      />
 
       {/* Create/Edit modal */}
       {showForm && (
@@ -261,10 +294,16 @@ export function ContactsPage() {
               <h3 className="text-lg font-semibold text-page-text">
                 {editing ? "Edit Contact" : "New Contact"}
               </h3>
-              <button onClick={() => setShowForm(false)} className="p-1 hover:bg-page-hover rounded">
+              <button onClick={() => { setShowForm(false); setFormError(null); }} className="p-1 hover:bg-page-hover rounded">
                 <X className="w-5 h-5 text-page-text" />
               </button>
             </div>
+            {formError && (
+              <div className="mb-4 flex items-start gap-2 p-3 rounded-lg bg-danger/10 border border-danger/30 text-danger">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <p className="text-sm leading-snug">{formError}</p>
+              </div>
+            )}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-page-text mb-1">Name</label>
@@ -283,7 +322,7 @@ export function ContactsPage() {
                 <input name="email" type="email" defaultValue={editing?.email ?? ""} className="w-full px-3 py-2 border border-card-border rounded-lg text-sm bg-page-bg-tertiary text-page-text" />
               </div>
               <div className="flex justify-end gap-3 pt-2">
-                <button type="button" onClick={() => setShowForm(false)} className="px-4 py-2 text-sm text-page-text-secondary hover:bg-page-hover rounded-lg">Cancel</button>
+                <button type="button" onClick={() => { setShowForm(false); setFormError(null); }} className="px-4 py-2 text-sm text-page-text-secondary hover:bg-page-hover rounded-lg">Cancel</button>
                 <button type="submit" className="px-4 py-2 text-sm bg-brand-sky text-white rounded-lg hover:bg-brand-sky/80">{editing ? "Update" : "Create"}</button>
               </div>
             </form>

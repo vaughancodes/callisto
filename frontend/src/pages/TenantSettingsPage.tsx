@@ -2,7 +2,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Shield, Trash2, UserPlus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { EmailLink } from "../components/LinkedContact";
+import { PageLoadingSpinner } from "../components/LoadingSpinner";
 import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { apiFetch } from "../lib/api";
@@ -13,6 +15,8 @@ interface TenantSettings {
   slug: string;
   description: string | null;
   context: string | null;
+  forward_to: string;
+  twilio_numbers: string[];
   settings: Record<string, unknown>;
 }
 
@@ -32,10 +36,13 @@ export function TenantSettingsPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [context, setContext] = useState("");
+  const [forwardTo, setForwardTo] = useState("");
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [showAddMember, setShowAddMember] = useState(false);
+  const [removingMember, setRemovingMember] = useState<Member | null>(null);
+  const [demotingAdmin, setDemotingAdmin] = useState<Member | null>(null);
 
-  const { data: settings } = useQuery({
+  const { data: settings, isLoading: settingsLoading } = useQuery({
     queryKey: ["tenant-settings", tenant?.id],
     queryFn: () =>
       apiFetch<TenantSettings>(`/api/v1/tenants/${tenant!.id}/settings`),
@@ -47,10 +54,11 @@ export function TenantSettingsPage() {
       setName(settings.name);
       setDescription(settings.description ?? "");
       setContext(settings.context ?? "");
+      setForwardTo(settings.forward_to ?? "");
     }
   }, [settings]);
 
-  const { data: members } = useQuery({
+  const { data: members, isLoading: membersLoading } = useQuery({
     queryKey: ["tenant-members", tenant?.id],
     queryFn: () =>
       apiFetch<Member[]>(`/api/v1/tenants/${tenant!.id}/members`),
@@ -119,12 +127,17 @@ export function TenantSettingsPage() {
     );
   }
 
+  if (settingsLoading || membersLoading) {
+    return <PageLoadingSpinner />;
+  }
+
   const handleSave = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     saveSettings.mutate({
       name,
       description: description || null,
       context: context || null,
+      forward_to: forwardTo.trim(),
     });
   };
 
@@ -178,13 +191,14 @@ export function TenantSettingsPage() {
               Business Context
             </label>
             <p className="text-xs text-page-text-secondary mb-2">
-              Describe what your callers typically contact you about. This
-              context is provided to the LLM during call analysis, so insights
-              are evaluated through the lens of your business. For example:
-              "We're a university admissions office. Callers are usually
-              prospective students or parents asking about application
-              deadlines, financial aid, campus visits, and program
-              requirements."
+              Describe your business and the conversations your team
+              typically has over the phone — whether calls come in or your
+              team places them. This context is provided to the LLM during
+              analysis, so insights are evaluated through the lens of your
+              business. For example: "We're a university admissions office.
+              Our calls are usually with prospective students or parents
+              discussing application deadlines, financial aid, campus
+              visits, and program requirements."
             </p>
             <textarea
               value={context}
@@ -193,6 +207,31 @@ export function TenantSettingsPage() {
               className="w-full px-3 py-2 border border-card-border rounded-lg text-sm bg-page-bg-tertiary text-page-text"
               placeholder="Describe your business and the typical reasons people call..."
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-page-text mb-1">
+              Inbound Call Destination
+            </label>
+            <p className="text-xs text-page-text-secondary mb-2">
+              When a call arrives at this tenant's Twilio number, it will be
+              forwarded to this destination — typically an E.164 phone number
+              (e.g. <code>+15551234567</code>) or a SIP URI. Leave blank to
+              keep the call open without forwarding (useful for testing).
+            </p>
+            <input
+              type="text"
+              value={forwardTo}
+              onChange={(e) => setForwardTo(e.target.value)}
+              className="w-full px-3 py-2 border border-card-border rounded-lg text-sm bg-page-bg-tertiary text-page-text"
+              placeholder="+15551234567"
+            />
+            {settings?.twilio_numbers && settings.twilio_numbers.length > 0 && (
+              <p className="text-xs text-page-text-muted mt-2">
+                Applies to inbound calls on:{" "}
+                {settings.twilio_numbers.join(", ")}
+              </p>
+            )}
           </div>
 
           <div className="flex items-center gap-3">
@@ -252,26 +291,22 @@ export function TenantSettingsPage() {
                 </td>
                 <td className="p-4 flex gap-3">
                   <button
-                    onClick={() =>
-                      toggleAdmin.mutate({
-                        userId: m.user_id,
-                        isAdmin: !m.is_admin,
-                      })
-                    }
+                    onClick={() => {
+                      if (m.is_admin) {
+                        setDemotingAdmin(m);
+                      } else {
+                        toggleAdmin.mutate({
+                          userId: m.user_id,
+                          isAdmin: true,
+                        });
+                      }
+                    }}
                     className="text-xs px-2.5 py-1 border border-brand-sky text-brand-sky rounded-md hover:bg-brand-sky/10 transition-colors"
                   >
                     {m.is_admin ? "Remove Admin" : "Make Admin"}
                   </button>
                   <button
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          `Remove ${m.name} from this tenant?`
-                        )
-                      ) {
-                        removeMember.mutate(m.user_id);
-                      }
-                    }}
+                    onClick={() => setRemovingMember(m)}
                     className="text-xs px-2.5 py-1 border border-danger text-danger rounded-md hover:bg-danger/10 transition-colors"
                   >
                     <Trash2 className="w-3 h-3 inline" /> Remove
@@ -289,6 +324,45 @@ export function TenantSettingsPage() {
           </tbody>
         </table>
       </div>
+
+      <ConfirmDialog
+        open={!!removingMember}
+        title="Remove Member"
+        message={
+          <>
+            Remove{" "}
+            <span className="font-semibold text-page-text">{removingMember?.name}</span>{" "}
+            from this tenant?
+          </>
+        }
+        warning="They will lose access to this tenant's calls, contacts, templates, and settings."
+        confirmLabel="Remove Member"
+        onConfirm={() => {
+          if (removingMember) removeMember.mutate(removingMember.user_id);
+          setRemovingMember(null);
+        }}
+        onCancel={() => setRemovingMember(null)}
+      />
+
+      <ConfirmDialog
+        open={!!demotingAdmin}
+        title="Remove Tenant Admin"
+        message={
+          <>
+            Remove tenant admin access from{" "}
+            <span className="font-semibold text-page-text">{demotingAdmin?.name}</span>?
+          </>
+        }
+        warning="They will remain a member of this tenant but will no longer be able to manage settings, members, or templates."
+        confirmLabel="Remove Admin"
+        onConfirm={() => {
+          if (demotingAdmin) {
+            toggleAdmin.mutate({ userId: demotingAdmin.user_id, isAdmin: false });
+          }
+          setDemotingAdmin(null);
+        }}
+        onCancel={() => setDemotingAdmin(null)}
+      />
 
       {/* Add member modal */}
       {showAddMember && (

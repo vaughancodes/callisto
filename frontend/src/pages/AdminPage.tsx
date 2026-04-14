@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Plus, Shield, Trash2, X } from "lucide-react";
+import { Plus, Shield, Trash2, X } from "lucide-react";
 import { useState } from "react";
+import { ConfirmDialog } from "../components/ConfirmDialog";
+import { PageLoadingSpinner } from "../components/LoadingSpinner";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { apiFetch } from "../lib/api";
 
@@ -29,13 +31,15 @@ export function AdminPage() {
   const [showTenantForm, setShowTenantForm] = useState(false);
   const [assigningUser, setAssigningUser] = useState<UserData | null>(null);
   const [deletingTenant, setDeletingTenant] = useState<TenantData | null>(null);
+  const [deletingUser, setDeletingUser] = useState<UserData | null>(null);
+  const [removingAdmin, setRemovingAdmin] = useState<UserData | null>(null);
 
-  const { data: tenants } = useQuery({
+  const { data: tenants, isLoading: tenantsLoading } = useQuery({
     queryKey: ["admin", "tenants"],
     queryFn: () => apiFetch<TenantData[]>("/api/admin/tenants"),
   });
 
-  const { data: users } = useQuery({
+  const { data: users, isLoading: usersLoading } = useQuery({
     queryKey: ["admin", "users"],
     queryFn: () => apiFetch<UserData[]>("/api/admin/users"),
   });
@@ -94,6 +98,10 @@ export function AdminPage() {
       settings,
     });
   };
+
+  if (tenantsLoading || usersLoading) {
+    return <PageLoadingSpinner />;
+  }
 
   return (
     <div className="p-6 space-y-8">
@@ -199,18 +207,22 @@ export function AdminPage() {
                       Assign Tenant
                     </button>
                     <button
-                      onClick={() =>
-                        updateUser.mutate({
-                          id: u.id,
-                          is_superadmin: !u.is_superadmin,
-                        })
-                      }
+                      onClick={() => {
+                        if (u.is_superadmin) {
+                          setRemovingAdmin(u);
+                        } else {
+                          updateUser.mutate({
+                            id: u.id,
+                            is_superadmin: true,
+                          });
+                        }
+                      }}
                       className="text-xs px-2.5 py-1 border border-accent-lavender text-accent-lavender rounded-md hover:bg-accent-lavender/10 transition-colors"
                     >
                       {u.is_superadmin ? "Remove Admin" : "Make Admin"}
                     </button>
                     <button
-                      onClick={() => deleteUser.mutate(u.id)}
+                      onClick={() => setDeletingUser(u)}
                       className="text-xs px-2.5 py-1 border border-danger text-danger rounded-md hover:bg-danger/10 transition-colors"
                     >
                       <Trash2 className="w-3 h-3" />
@@ -289,48 +301,62 @@ export function AdminPage() {
         </div>
       )}
 
-      {/* Assign Tenant Modal */}
-      {/* Delete Tenant Confirmation */}
-      {deletingTenant && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-          <div className="bg-card-bg rounded-xl shadow-lg w-full max-w-md p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-danger/15 rounded-full">
-                <AlertTriangle className="w-5 h-5 text-danger" />
-              </div>
-              <h3 className="text-lg font-semibold text-page-text">
-                Delete Tenant
-              </h3>
-            </div>
-            <p className="text-sm text-page-text-secondary mb-2">
-              Are you sure you want to delete{" "}
-              <span className="font-semibold text-page-text">{deletingTenant.name}</span>?
-            </p>
-            <p className="text-sm text-danger mb-6">
-              This will permanently delete all calls, transcripts, insights,
-              templates, and summaries associated with this tenant. This action
-              cannot be undone.
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setDeletingTenant(null)}
-                className="px-4 py-2 text-sm text-page-text-secondary hover:bg-page-hover rounded-lg"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  deleteTenant.mutate(deletingTenant.id);
-                  setDeletingTenant(null);
-                }}
-                className="px-4 py-2 text-sm bg-danger text-white rounded-lg hover:bg-danger/80"
-              >
-                Delete Tenant
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={!!deletingTenant}
+        title="Delete Tenant"
+        message={
+          <>
+            Are you sure you want to delete{" "}
+            <span className="font-semibold text-page-text">{deletingTenant?.name}</span>?
+          </>
+        }
+        warning="This will permanently delete all calls, transcripts, insights, templates, and summaries associated with this tenant. This action cannot be undone."
+        confirmLabel="Delete Tenant"
+        onConfirm={() => {
+          if (deletingTenant) deleteTenant.mutate(deletingTenant.id);
+          setDeletingTenant(null);
+        }}
+        onCancel={() => setDeletingTenant(null)}
+      />
+
+      <ConfirmDialog
+        open={!!deletingUser}
+        title="Delete User"
+        message={
+          <>
+            Are you sure you want to delete{" "}
+            <span className="font-semibold text-page-text">{deletingUser?.name}</span>{" "}
+            ({deletingUser?.email})?
+          </>
+        }
+        warning="The user will lose access immediately. They can sign back in with Google, but their tenant memberships and admin status will need to be re-assigned."
+        confirmLabel="Delete User"
+        onConfirm={() => {
+          if (deletingUser) deleteUser.mutate(deletingUser.id);
+          setDeletingUser(null);
+        }}
+        onCancel={() => setDeletingUser(null)}
+      />
+
+      <ConfirmDialog
+        open={!!removingAdmin}
+        title="Remove Superadmin"
+        message={
+          <>
+            Remove superadmin access from{" "}
+            <span className="font-semibold text-page-text">{removingAdmin?.name}</span>?
+          </>
+        }
+        warning="They will lose access to the Administration page and all cross-tenant controls."
+        confirmLabel="Remove Admin"
+        onConfirm={() => {
+          if (removingAdmin) {
+            updateUser.mutate({ id: removingAdmin.id, is_superadmin: false });
+          }
+          setRemovingAdmin(null);
+        }}
+        onCancel={() => setRemovingAdmin(null)}
+      />
 
       {assigningUser && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
@@ -370,7 +396,7 @@ export function AdminPage() {
                   className={`w-full text-left px-3 py-2 text-sm rounded-lg hover:bg-page-hover ${
                     assigningUser.tenant_id === t.id
                       ? "bg-brand-sky/10 text-brand-sky"
-                      : ""
+                      : "text-page-text"
                   }`}
                 >
                   {t.name}

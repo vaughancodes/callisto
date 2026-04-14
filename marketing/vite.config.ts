@@ -5,17 +5,12 @@ import { defineConfig } from "vite";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
-    port: 5308,
-    allowedHosts: ["app.callisto.works"],
+    port: 5307,
+    host: "0.0.0.0",
+    allowedHosts: ["callisto.works", "www.callisto.works"],
     hmr: {
-      // HMR goes through nginx, not directly to the dev server
       clientPort: 443,
       protocol: "wss",
-    },
-    proxy: {
-      "/api": "http://localhost:5309",
-      "/auth/google": "http://localhost:5309",
-      "/auth/me": "http://localhost:5309",
     },
   },
 });

@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 import { HelpTooltip } from "../components/HelpTooltip";
+import { PageLoadingSpinner } from "../components/LoadingSpinner";
 import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { apiFetch } from "../lib/api";
@@ -31,6 +33,7 @@ export function TemplatesPage() {
   // Defaults used to pre-fill the form (separate from `editing` so we can
   // create a new template from an existing one without editing it in place).
   const [formDefaults, setFormDefaults] = useState<Template | null>(null);
+  const [deleting, setDeleting] = useState<Template | null>(null);
 
   const { data: templates, isLoading } = useQuery({
     queryKey: ["templates", tenant?.id],
@@ -88,6 +91,10 @@ export function TemplatesPage() {
     }
   };
 
+  if (isLoading) {
+    return <PageLoadingSpinner />;
+  }
+
   return (
     <div className="p-6">
       <div className="flex items-start justify-between gap-6 mb-6">
@@ -115,9 +122,6 @@ export function TemplatesPage() {
 
       {/* Template list */}
       <div className="bg-card-bg rounded-lg border border-card-border">
-        {isLoading ? (
-          <div className="p-8 text-center text-page-text-muted">Loading...</div>
-        ) : (
           <table className="w-full">
             <thead>
               <tr className="border-b border-card-border text-left text-sm text-page-text-secondary">
@@ -184,7 +188,7 @@ export function TemplatesPage() {
                         Duplicate
                       </button>
                       <button
-                        onClick={() => deleteMutation.mutate(t.id)}
+                        onClick={() => setDeleting(t)}
                         className="text-xs px-2.5 py-1 border border-danger text-danger rounded-md hover:bg-danger/10 transition-colors"
                       >
                         Delete
@@ -195,8 +199,25 @@ export function TemplatesPage() {
               ))}
             </tbody>
           </table>
-        )}
       </div>
+
+      <ConfirmDialog
+        open={!!deleting}
+        title="Delete Template"
+        message={
+          <>
+            Are you sure you want to delete{" "}
+            <span className="font-semibold text-page-text">{deleting?.name}</span>?
+          </>
+        }
+        warning="Existing insights detected with this template will remain, but it will no longer be evaluated on future calls."
+        confirmLabel="Delete Template"
+        onConfirm={() => {
+          if (deleting) deleteMutation.mutate(deleting.id);
+          setDeleting(null);
+        }}
+        onCancel={() => setDeleting(null)}
+      />
 
       {/* Create/Edit modal */}
       {showForm && (
@@ -249,9 +270,11 @@ export function TemplatesPage() {
                   Detection Prompt
                   <HelpTooltip>
                     The instruction sent to the LLM describing what to
-                    detect. Be specific — e.g. "Detect if the caller asks
-                    for a callback or requests that someone follow up with
-                    them."
+                    detect. Be specific — e.g. "Detect if the external
+                    party asks for a callback or requests that someone
+                    follow up with them." You can reference the two
+                    speakers as [external] (the other party) and [internal]
+                    (your team).
                   </HelpTooltip>
                 </label>
                 <textarea

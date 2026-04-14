@@ -30,12 +30,23 @@ class SlidingWindow:
         self.eval_interval = eval_interval
 
     def add(self, chunk: TranscriptChunk):
-        self.chunks.append(chunk)
+        # Insert in chronological order (by start_ms) so two speakers' chunks
+        # arriving out of order still form a sensible conversation.
+        inserted = False
+        for i in range(len(self.chunks) - 1, -1, -1):
+            if self.chunks[i].start_ms <= chunk.start_ms:
+                self.chunks.insert(i + 1, chunk)
+                inserted = True
+                break
+        if not inserted:
+            self.chunks.appendleft(chunk)
+
         self.eval_counter += 1
 
         # Evict chunks older than the window
+        latest_end = max(c.end_ms for c in self.chunks)
         while len(self.chunks) > 1 and (
-            self.chunks[-1].end_ms - self.chunks[0].start_ms > self.max_duration_ms
+            latest_end - self.chunks[0].start_ms > self.max_duration_ms
         ):
             self.chunks.popleft()
 
@@ -43,7 +54,14 @@ class SlidingWindow:
         return self.eval_counter % self.eval_interval == 0 and len(self.chunks) > 0
 
     def get_text(self) -> str:
-        return " ".join(c.text for c in self.chunks if c.text.strip())
+        """Render the window as a speaker-labeled conversation."""
+        lines = []
+        for c in self.chunks:
+            if not c.text.strip():
+                continue
+            speaker = c.speaker if c.speaker and c.speaker != "unknown" else "speaker"
+            lines.append(f"[{speaker}] {c.text.strip()}")
+        return "\n".join(lines)
 
     def get_range(self) -> dict:
         if not self.chunks:

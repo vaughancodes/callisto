@@ -42,8 +42,10 @@ class InsightEvaluator:
             base_url=Config.LLM_BASE_URL,
         )
         self.windows: dict[str, SlidingWindow] = {}
-        self.templates_cache: dict[str, list[dict]] = {}  # tenant_id -> templates
-        self.context_cache: dict[str, str | None] = {}  # tenant_id -> tenant.context
+        # Per-call cache — populated on first chunk of each call, cleared on end.
+        # This ensures template/context edits take effect on the NEXT call.
+        self.templates_cache: dict[str, list[dict]] = {}  # call_id -> templates
+        self.context_cache: dict[str, str | None] = {}  # call_id -> tenant.context
         self.call_id_cache: dict[str, str] = {}  # external_id (call SID) -> db UUID
         # Track which templates have already fired per call to avoid duplicates.
         # Key: (call_id, template_id) -> last evidence string
@@ -145,7 +147,7 @@ class InsightEvaluator:
         # On end-of-stream, force-evaluate whatever's in the window then clean up
         if msg_type == "end":
             if call_id in self.windows and not self.windows[call_id].is_empty:
-                templates = await self._get_templates(tenant_id)
+                templates = await self._get_templates(call_id, tenant_id)
                 if templates:
                     await self._run_evaluation(call_id, tenant_id, self.windows[call_id], templates)
             self.cleanup_call(call_id)
@@ -175,8 +177,8 @@ class InsightEvaluator:
         if not window.should_evaluate():
             return
 
-        # Load templates for this tenant (cached)
-        templates = await self._get_templates(tenant_id)
+        # Load templates for this call (fresh fetch on first chunk, cached for the rest of the call)
+        templates = await self._get_templates(call_id, tenant_id)
         if not templates:
             return
 
@@ -189,7 +191,7 @@ class InsightEvaluator:
         if not window_text.strip():
             return
 
-        context = self.context_cache.get(tenant_id)
+        context = self.context_cache.get(call_id)
         detected = await self._evaluate_window(window_text, templates, context)
 
         db_call_id = self._resolve_call_id(call_id)
@@ -267,12 +269,14 @@ class InsightEvaluator:
                 return db_id
         return None
 
-    async def _get_templates(self, tenant_id: str) -> list[dict]:
-        """Load active realtime templates for a tenant, with caching.
-        Also caches the tenant's context string.
+    async def _get_templates(self, call_id: str, tenant_id: str) -> list[dict]:
+        """Load active realtime templates and tenant context for this call.
+        Cached per-call (fresh fetch on the first chunk of each call) so
+        template/context edits apply to any subsequent calls without
+        restarting the evaluator.
         """
-        if tenant_id in self.templates_cache:
-            return self.templates_cache[tenant_id]
+        if call_id in self.templates_cache:
+            return self.templates_cache[call_id]
 
         from callisto.app import create_app
         from callisto.extensions import db
@@ -281,7 +285,7 @@ class InsightEvaluator:
         app = create_app()
         with app.app_context():
             tenant = db.session.get(Tenant, tenant_id)
-            self.context_cache[tenant_id] = tenant.context if tenant else None
+            self.context_cache[call_id] = tenant.context if tenant else None
 
             templates = InsightTemplate.query.filter_by(
                 tenant_id=tenant_id, active=True, is_realtime=True
@@ -298,7 +302,7 @@ class InsightEvaluator:
                 for t in templates
             ]
 
-        self.templates_cache[tenant_id] = result
+        self.templates_cache[call_id] = result
         return result
 
     async def _evaluate_window(
@@ -328,6 +332,12 @@ Analyze the call through the lens of the following context about the business an
 
         prompt = f"""You are a real-time call analyst. Evaluate this transcript excerpt against the insight templates. This is a LIVE call — only report insights clearly present in the text.
 
+The transcript is from a two-party phone conversation. Each line is prefixed with the speaker:
+- [external] = the person outside the organization (the contact on the other end of the call — this may be someone calling in, or someone being called)
+- [internal] = the person inside the organization using Callisto (the one handling or placing the call on behalf of the business)
+
+Consider BOTH speakers when evaluating templates. Pay attention to who said what — a template about the external party's intent should key off [external] utterances, while templates about how the internal party is conducting the call (compliance, tone, commitments) should key off [internal] utterances.
+
 {context_section}## Templates
 {template_descriptions}
 
@@ -338,8 +348,8 @@ Respond with a JSON array. For each template:
 - "template_id": the template ID
 - "detected": true/false
 - "confidence": 0.0-1.0
-- "evidence": exact quote if detected, empty string if not
-- "reasoning": brief explanation
+- "evidence": exact quote if detected, empty string if not (include the speaker prefix)
+- "reasoning": brief explanation, noting which speaker triggered the detection
 
 Only include templates where detected is true. If nothing is detected, respond with an empty array [].
 
@@ -420,6 +430,12 @@ Respond ONLY with the JSON array."""
     def cleanup_call(self, call_id: str):
         """Remove state for a completed call."""
         self.windows.pop(call_id, None)
+        self.templates_cache.pop(call_id, None)
+        self.context_cache.pop(call_id, None)
+        # Drop any dedup entries for this call
+        for key in list(self.detected_cache.keys()):
+            if key[0] == call_id:
+                self.detected_cache.pop(key, None)
 
 
 async def main():

@@ -69,16 +69,18 @@ def assemble_full_transcript(self, pipeline_data: dict):
     if not call:
         raise ValueError(f"Call {call_id} not found")
 
-    # Use hot-path chunks if they exist
+    # Use hot-path chunks if they exist. Sort by time so two-speaker
+    # conversations render chronologically regardless of which track each
+    # chunk arrived on.
     existing_chunks = (
         Transcript.query
         .filter_by(call_id=call.id)
-        .order_by(Transcript.chunk_index)
+        .order_by(Transcript.start_ms, Transcript.chunk_index)
         .all()
     )
 
     if existing_chunks:
-        full_transcript = " ".join(c.text for c in existing_chunks)
+        full_transcript = _render_transcript(existing_chunks)
         logger.info(
             "Assembled transcript from %d hot-path chunks for call %s",
             len(existing_chunks), call_id,
@@ -107,21 +109,24 @@ def assemble_full_transcript(self, pipeline_data: dict):
         db.session.commit()
         raise self.retry(exc=e, countdown=30)
 
+    fallback_chunks = []
     for seg in segments:
-        db.session.add(Transcript(
+        t = Transcript(
             call_id=call.id,
             tenant_id=call.tenant_id,
-            speaker="unknown",
+            speaker="external",  # Whisper fallback only processes the inbound track (external party)
             text=seg["text"],
             start_ms=seg["start_ms"],
             end_ms=seg["end_ms"],
             confidence=_normalize_logprob(seg["confidence"]),
             chunk_index=seg["chunk_index"],
-        ))
+        )
+        db.session.add(t)
+        fallback_chunks.append(t)
     db.session.commit()
     logger.info("Stored %d Whisper transcript chunks for call %s", len(segments), call_id)
 
-    full_transcript = " ".join(seg["text"] for seg in segments)
+    full_transcript = _render_transcript(fallback_chunks)
     try:
         Path(audio_path).unlink(missing_ok=True)
     except OSError:
@@ -190,6 +195,12 @@ Analyze the call through the lens of the following context about the business an
 
     prompt = f"""You are an expert call analyst performing deep post-call analysis. You have access to the COMPLETE call transcript — analyze it holistically for patterns that may only be visible in full context.
 
+The transcript is from a two-party phone conversation. Each line is prefixed with the speaker:
+- [external] = the person outside the organization (the contact on the other end of the call)
+- [internal] = the person inside the organization using Callisto (handling or placing the call on behalf of the business)
+
+Pay close attention to who said what. A template about the external party's intent should key off [external] utterances; a template about how the internal party is conducting the call should key off [internal] utterances.
+
 {context_section}## Insight Templates to Evaluate
 
 {template_descriptions}
@@ -211,8 +222,8 @@ Respond with a JSON array. Each element:
 - "template_id": the template ID string
 - "detected": true or false
 - "confidence": 0.0 to 1.0
-- "evidence": exact quotes from the transcript supporting detection
-- "reasoning": explanation including any cross-conversation patterns
+- "evidence": exact quotes from the transcript (include the [external] or [internal] prefix)
+- "reasoning": explanation including which speaker triggered it and any cross-conversation patterns
 
 Respond ONLY with the JSON array."""
 
@@ -338,6 +349,10 @@ Analyze the call through the lens of the following context:
 
     prompt = f"""Analyze this phone call transcript and produce a structured summary.
 
+The transcript is from a two-party phone conversation. Each line is prefixed with the speaker:
+- [external] = the person outside the organization (the contact on the other end of the call)
+- [internal] = the person inside the organization using Callisto (handling or placing the call on behalf of the business)
+
 {context_section}## Transcript
 
 {full_transcript}
@@ -345,12 +360,12 @@ Analyze the call through the lens of the following context:
 ## Instructions
 
 Respond with a JSON object containing:
-- "summary": a concise 2-4 sentence executive summary of the call
-- "sentiment": one of "positive", "negative", "neutral", or "mixed"
+- "summary": a concise 2-4 sentence executive summary of the call that accurately reflects both parties' roles
+- "sentiment": one of "positive", "negative", "neutral", or "mixed" (reflecting the overall tone of the call)
 - "key_topics": an array of 3-8 topic strings (e.g. "billing", "cancellation", "product feedback")
 - "action_items": an array of objects, each with:
   - "text": description of the action item
-  - "assignee": "agent" or "caller" or "company"
+  - "assignee": "internal" (the organization's side), "external" (the other party), or "company" (the organization as a whole)
   - "priority": "high", "medium", or "low"
 
 If the transcript is too short or unclear for meaningful analysis, still provide your best assessment.
@@ -478,3 +493,20 @@ def _normalize_logprob(logprob: float) -> float:
         return max(0.0, min(1.0, math.exp(logprob)))
     except (ValueError, OverflowError):
         return 0.5
+
+
+def _render_transcript(chunks) -> str:
+    """Render a list of Transcript rows as a speaker-labeled conversation.
+
+    Each line is prefixed with [external] or [internal] so the LLM can attribute
+    statements to the right party. Chunks are assumed to be in chronological
+    order (by start_ms).
+    """
+    lines = []
+    for c in chunks:
+        text = (c.text or "").strip()
+        if not text:
+            continue
+        speaker = c.speaker if c.speaker and c.speaker != "unknown" else "speaker"
+        lines.append(f"[{speaker}] {text}")
+    return "\n".join(lines)

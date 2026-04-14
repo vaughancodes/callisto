@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { CallListItem, type CallListData } from "../components/CallListItem";
+import { PageLoadingSpinner } from "../components/LoadingSpinner";
 import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useInsightStream } from "../hooks/useWebSocket";
@@ -20,6 +21,10 @@ export function DashboardPage() {
     refetchInterval: 10000,
   });
 
+  if (isLoading) {
+    return <PageLoadingSpinner />;
+  }
+
   return (
     <div className="p-6">
       <h2 className="text-2xl font-bold text-page-text mb-6">Dashboard</h2>
@@ -31,9 +36,7 @@ export function DashboardPage() {
             <div className="p-4 border-b border-card-border">
               <h3 className="font-semibold text-page-text">Recent Calls</h3>
             </div>
-            {isLoading ? (
-              <div className="p-8 text-center text-page-text-muted">Loading...</div>
-            ) : data?.calls.length === 0 ? (
+            {data?.calls.length === 0 ? (
               <div className="p-8 text-center text-page-text-muted">
                 No calls yet. Call your Twilio number to get started.
               </div>

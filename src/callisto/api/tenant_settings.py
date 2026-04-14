@@ -4,6 +4,7 @@ Access: tenant admins and superadmins.
 """
 
 from flask import g, jsonify, request
+from sqlalchemy.orm.attributes import flag_modified
 
 from callisto.api import bp
 from callisto.auth.middleware import require_tenant_admin
@@ -12,13 +13,16 @@ from callisto.models import Tenant, TenantMembership, User
 
 
 def _serialize_tenant(t: Tenant) -> dict:
+    settings = t.settings or {}
     return {
         "id": str(t.id),
         "name": t.name,
         "slug": t.slug,
         "description": t.description,
         "context": t.context,
-        "settings": t.settings,
+        "forward_to": settings.get("forward_to", ""),
+        "twilio_numbers": settings.get("twilio_numbers", []),
+        "settings": settings,
     }
 
 
@@ -52,6 +56,11 @@ def update_tenant_settings(tenant_id):
         tenant.description = data["description"]
     if "context" in data:
         tenant.context = data["context"]
+    if "forward_to" in data:
+        if tenant.settings is None:
+            tenant.settings = {}
+        tenant.settings["forward_to"] = (data["forward_to"] or "").strip()
+        flag_modified(tenant, "settings")
     if "settings" in data:
         tenant.settings = data["settings"]
 

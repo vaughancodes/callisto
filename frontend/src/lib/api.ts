@@ -35,7 +35,15 @@ export async function apiFetch<T = unknown>(
 
   if (!resp.ok) {
     const body = await resp.text();
-    throw new Error(`API error ${resp.status}: ${body}`);
+    let message = body || `Request failed (${resp.status})`;
+    try {
+      const parsed = JSON.parse(body);
+      if (parsed?.error) message = parsed.error;
+      else if (parsed?.message) message = parsed.message;
+    } catch {
+      // body wasn't JSON — fall back to raw text
+    }
+    throw new Error(message);
   }
 
   if (resp.status === 204) return undefined as T;

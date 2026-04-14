@@ -86,10 +86,12 @@ def update_call_notes(call_id):
 
 @bp.route("/calls/<uuid:call_id>/transcript", methods=["GET"])
 def get_transcript(call_id):
+    # Sort chronologically by start time so two-speaker conversations merge
+    # correctly across the inbound/outbound tracks.
     chunks = (
         Transcript.query
         .filter_by(call_id=call_id)
-        .order_by(Transcript.chunk_index)
+        .order_by(Transcript.start_ms, Transcript.chunk_index)
         .all()
     )
     return jsonify([
@@ -117,6 +119,8 @@ def get_call_insights(call_id):
         {
             "id": str(i.id),
             "template_id": str(i.template_id),
+            "template_name": i.template.name if i.template else None,
+            "template_severity": i.template.severity if i.template else None,
             "source": i.source,
             "detected_at": i.detected_at.isoformat() if i.detected_at else None,
             "confidence": i.confidence,
