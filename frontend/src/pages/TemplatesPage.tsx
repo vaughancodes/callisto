@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, X } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { apiFetch } from "../lib/api";
 
 interface Template {
@@ -21,6 +22,7 @@ const categories = ["sales", "support", "compliance", "custom"];
 const severities = ["info", "warning", "critical"];
 
 export function TemplatesPage() {
+  useDocumentTitle("Templates");
   const { tenant } = useAuth();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);

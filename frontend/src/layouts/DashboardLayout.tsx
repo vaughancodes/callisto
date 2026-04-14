@@ -27,17 +27,17 @@ export function DashboardLayout() {
     <div className="flex h-screen bg-page-bg">
       {/* Sidebar — always dark, uses dark palette colors directly */}
       <aside className="w-64 bg-surface-dark dark:bg-surface-elevated flex flex-col">
-        <div className="p-4 border-b border-[#252a36]">
-          <div className="flex items-center gap-2.5">
+        <div className="px-3 py-4 border-b border-[#252a36]">
+          <div className="flex items-center gap-3 min-w-0">
             <img
               src="/callisto-icon-animated.svg"
               alt=""
-              className="w-9 h-9"
+              className="w-10 h-10 shrink-0"
             />
             <img
               src="/callisto-wordmark-dark.svg"
               alt="Callisto"
-              className="h-6"
+              className="h-6 min-w-0 max-w-full object-contain"
             />
           </div>
           <p className="text-xs text-[#64748b] mt-2">

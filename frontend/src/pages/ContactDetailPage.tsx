@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { CallListItem, type CallListData } from "../components/CallListItem";
 import { EmailLink, PhoneLink } from "../components/LinkedContact";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { apiFetch } from "../lib/api";
 import { capitalize } from "../lib/format";
 
@@ -49,6 +50,8 @@ export function ContactDetailPage() {
     queryKey: ["contact", contactId],
     queryFn: () => apiFetch<ContactDetailData>(`/api/v1/contacts/${contactId}`),
   });
+
+  useDocumentTitle(contact ? contact.name : "Contact");
 
   const contactNotes = contact?.notes ?? "";
   const [notesText, setNotesText] = useState(contactNotes);

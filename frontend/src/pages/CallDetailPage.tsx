@@ -3,6 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { PhoneLink } from "../components/LinkedContact";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useInsightStream } from "../hooks/useWebSocket";
 import { apiFetch } from "../lib/api";
 import { capitalize, formatDateTime, formatInsightSource, formatStatus } from "../lib/format";
@@ -75,6 +76,10 @@ export function CallDetailPage() {
     queryKey: ["call", callId],
     queryFn: () => apiFetch<CallData>(`/api/v1/calls/${callId}`),
   });
+
+  useDocumentTitle(
+    call ? `${call.contact_name ?? call.caller_number} call` : "Call"
+  );
 
   const notesFromServer = call?.notes ?? "";
   const [notesText, setNotesText] = useState(notesFromServer);

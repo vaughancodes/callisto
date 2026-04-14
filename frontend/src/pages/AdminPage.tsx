@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Plus, Shield, Trash2, X } from "lucide-react";
 import { useState } from "react";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { apiFetch } from "../lib/api";
 
 interface TenantData {
@@ -23,6 +24,7 @@ interface UserData {
 }
 
 export function AdminPage() {
+  useDocumentTitle("Administration");
   const queryClient = useQueryClient();
   const [showTenantForm, setShowTenantForm] = useState(false);
   const [assigningUser, setAssigningUser] = useState<UserData | null>(null);

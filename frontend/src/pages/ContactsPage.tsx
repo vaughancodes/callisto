@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { EmailLink, PhoneLink } from "../components/LinkedContact";
 import { useAuth, getGoogleToken } from "../contexts/AuthContext";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { apiFetch } from "../lib/api";
 
 interface ContactData {
@@ -17,6 +18,7 @@ interface ContactData {
 }
 
 export function ContactsPage() {
+  useDocumentTitle("Contacts");
   const { tenant } = useAuth();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);

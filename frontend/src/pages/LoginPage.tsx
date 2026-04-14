@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
+import { Navigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 
 export function LoginPage() {
-  const { login } = useAuth();
+  useDocumentTitle(null);
+  const { login, user, isLoading } = useAuth();
   const [showButton, setShowButton] = useState(false);
   // Cache-bust the SVG so the animation replays on every mount/refresh
   const logoSrc = useMemo(
@@ -14,6 +17,11 @@ export function LoginPage() {
     const timer = setTimeout(() => setShowButton(true), 3500);
     return () => clearTimeout(timer);
   }, []);
+
+  // If already logged in, redirect to dashboard
+  if (!isLoading && user) {
+    return <Navigate to="/" replace />;
+  }
 
   return (
     <div

@@ -11,6 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import { useAuth } from "../contexts/AuthContext";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { apiFetch } from "../lib/api";
 
 interface TrendPoint {
@@ -31,6 +32,7 @@ const COLORS = [
 ];
 
 export function AnalyticsPage() {
+  useDocumentTitle("Analytics");
   const { tenant } = useAuth();
   const [days, setDays] = useState(30);
 

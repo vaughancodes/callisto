@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
 import { CallListItem, type CallListData } from "../components/CallListItem";
 import { useAuth } from "../contexts/AuthContext";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useInsightStream } from "../hooks/useWebSocket";
 import { apiFetch } from "../lib/api";
 
 export function DashboardPage() {
+  useDocumentTitle("Dashboard");
   const { tenant } = useAuth();
   const insights = useInsightStream();
 

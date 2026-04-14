@@ -8,8 +8,12 @@ export function AuthCallbackPage() {
   useEffect(() => {
     const token = handleAuthCallback();
     if (token) {
-      // Force full page reload so AuthContext picks up the new token
-      window.location.href = "/";
+      // Small delay to ensure localStorage write is flushed before navigation.
+      // Without this there's an occasional race where the new page loads
+      // before the token is committed, and AuthContext thinks we're logged out.
+      setTimeout(() => {
+        window.location.href = "/";
+      }, 100);
     } else {
       navigate("/login");
     }
