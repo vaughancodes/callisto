@@ -1,7 +1,11 @@
 <p align="center">
   <img src="frontend/public/callisto-icon-animated.svg" alt="" height="120" align="middle">
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="frontend/public/callisto-wordmark-dark.svg" alt="Callisto" height="100" align="middle">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="frontend/public/callisto-wordmark-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="frontend/public/callisto-wordmark-light.svg">
+    <img alt="Callisto" src="frontend/public/callisto-wordmark-dark.svg" height="100" align="middle">
+  </picture>
 </p>
 
 <p align="center">
