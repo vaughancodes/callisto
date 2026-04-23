@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
-import { useState } from "react";
+import { ArrowLeft, RefreshCw } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { PhoneLink } from "../components/LinkedContact";
 import { PageLoadingSpinner } from "../components/LoadingSpinner";
@@ -79,6 +79,10 @@ export function CallDetailPage() {
   const { data: call, isLoading: callLoading } = useQuery({
     queryKey: ["call", callId],
     queryFn: () => apiFetch<CallData>(`/api/v1/calls/${callId}`),
+    refetchInterval: (query) => {
+      const s = query.state.data?.status;
+      return s === "active" || s === "processing" ? 3000 : false;
+    },
   });
 
   const otherPartyNumber = call?.other_party_number ?? call?.caller_number ?? "";
@@ -96,6 +100,24 @@ export function CallDetailPage() {
     setLastSynced(notesFromServer);
   }
 
+  const isInFlight = call?.status === "active" || call?.status === "processing";
+
+  // When the call leaves "processing" (i.e. the cold-path worker just
+  // finished), force summary + insights to refetch. Their own polling stops
+  // the moment status flips, and the last poll may have fired before the
+  // worker committed the new rows — without this invalidation the page can
+  // be left showing the pre-reanalysis summary.
+  const prevStatusRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    const current = call?.status;
+    if (prev === "processing" && current && current !== "processing") {
+      queryClient.invalidateQueries({ queryKey: ["summary", callId] });
+      queryClient.invalidateQueries({ queryKey: ["insights", callId] });
+    }
+    prevStatusRef.current = current;
+  }, [call?.status, callId, queryClient]);
+
   const { data: transcript, isLoading: transcriptLoading } = useQuery({
     queryKey: ["transcript", callId],
     queryFn: () =>
@@ -107,14 +129,15 @@ export function CallDetailPage() {
     queryKey: ["insights", callId],
     queryFn: () =>
       apiFetch<InsightData[]>(`/api/v1/calls/${callId}/insights`),
-    refetchInterval: call?.status === "active" ? 5000 : false,
+    refetchInterval: isInFlight ? 3000 : false,
   });
 
   const { data: summary } = useQuery({
     queryKey: ["summary", callId],
     queryFn: () =>
       apiFetch<SummaryData>(`/api/v1/calls/${callId}/summary`),
-    enabled: call?.status === "completed",
+    enabled: call?.status === "completed" || call?.status === "processing",
+    refetchInterval: call?.status === "processing" ? 3000 : false,
     retry: false,
   });
 
@@ -127,6 +150,32 @@ export function CallDetailPage() {
     onSuccess: () => {
       setEditingNotes(false);
       queryClient.invalidateQueries({ queryKey: ["call", callId] });
+    },
+  });
+
+  const [reanalyzeError, setReanalyzeError] = useState<string | null>(null);
+  const reanalyze = useMutation({
+    mutationFn: () =>
+      apiFetch(`/api/v1/calls/${callId}/reanalyze`, { method: "POST" }),
+    onSuccess: () => {
+      setReanalyzeError(null);
+      // Nudge the call query so polling picks up the new "processing" status
+      // immediately rather than waiting for the next tick.
+      queryClient.invalidateQueries({ queryKey: ["call", callId] });
+    },
+    onError: (err: Error) => {
+      const match = err.message.match(/API error \d+: (.*)/);
+      let msg = err.message;
+      if (match) {
+        try {
+          const parsed = JSON.parse(match[1]);
+          if (parsed?.error) msg = parsed.error;
+        } catch {
+          /* fall through */
+        }
+      }
+      setReanalyzeError(msg);
+      setTimeout(() => setReanalyzeError(null), 6000);
     },
   });
 
@@ -148,7 +197,7 @@ export function CallDetailPage() {
         >
           <ArrowLeft className="w-5 h-5 text-page-text" />
         </button>
-        <div>
+        <div className="flex-1 min-w-0">
           <h2 className="text-2xl font-bold text-page-text">
             {call?.contact_name ? (
               call.contact_id ? (
@@ -186,6 +235,34 @@ export function CallDetailPage() {
             {call?.started_at && ` · ${formatDateTime(call.started_at)}`}
           </p>
         </div>
+        {(call?.status === "completed" || call?.status === "processing") && (
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            <button
+              onClick={() => reanalyze.mutate()}
+              disabled={reanalyze.isPending || call?.status === "processing"}
+              title="Re-run deep analysis and summary with the current templates and context"
+              className="flex items-center gap-2 px-3 py-2 bg-card-bg border border-card-border rounded-lg hover:bg-page-hover text-sm text-page-text disabled:opacity-50"
+            >
+              <RefreshCw
+                className={`w-4 h-4 ${
+                  reanalyze.isPending || call?.status === "processing"
+                    ? "animate-spin"
+                    : ""
+                }`}
+              />
+              {call?.status === "processing"
+                ? "Analyzing..."
+                : reanalyze.isPending
+                  ? "Queuing..."
+                  : "Re-analyze"}
+            </button>
+            {reanalyzeError && (
+              <span className="text-xs text-danger max-w-xs text-right">
+                {reanalyzeError}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">

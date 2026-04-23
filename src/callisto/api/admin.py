@@ -264,13 +264,13 @@ def unassign_number_from_organization(org_id, number_id):
     voice webhook so the number stops routing to Callisto, then deletes
     our phone_numbers row.
     """
-    from callisto.api.organizations import revoke_sip_user
+    from callisto.api.organizations import clear_tenant_assignment_state
 
     pn = db.get_or_404(PhoneNumber, number_id)
     if str(pn.organization_id) != str(org_id):
         return jsonify({"error": "Number does not belong to this organization"}), 404
 
-    revoke_sip_user(pn)
+    clear_tenant_assignment_state(pn)
 
     if pn.twilio_sid:
         try:
@@ -431,7 +431,7 @@ def cascade_delete_tenant(tenant: Tenant) -> None:
     credentials attached to those numbers, since they were minted against
     this tenant's SIP Domain.
     """
-    from callisto.api.organizations import revoke_sip_user
+    from callisto.api.organizations import clear_tenant_assignment_state
     from callisto.models import Call, CallSummary, Insight, InsightTemplate, Transcript
 
     # Delete in FK order: summaries, insights, transcripts, calls, templates, users
@@ -442,14 +442,11 @@ def cascade_delete_tenant(tenant: Tenant) -> None:
         Transcript.query.filter(Transcript.call_id.in_(call_ids)).delete()
     Call.query.filter_by(tenant_id=tenant.id).delete()
     InsightTemplate.query.filter_by(tenant_id=tenant.id).delete()
-    # Revoke SIP credentials before unlinking the numbers from the tenant —
-    # revoke_sip_user reads pn.tenant_id to find the cred list.
+    # Reset per-tenant state (friendly name, SIP user, routing) before
+    # unlinking the numbers — clear_tenant_assignment_state reads
+    # pn.tenant_id to find the SIP credential list.
     for pn in PhoneNumber.query.filter_by(tenant_id=tenant.id).all():
-        revoke_sip_user(pn)
-        pn.inbound_enabled = False
-        pn.outbound_enabled = False
-        pn.inbound_mode = "none"
-        pn.inbound_forward_to = None
+        clear_tenant_assignment_state(pn)
     PhoneNumber.query.filter_by(tenant_id=tenant.id).update({"tenant_id": None})
     User.query.filter_by(tenant_id=tenant.id).update({"tenant_id": None})
     db.session.delete(tenant)

@@ -112,6 +112,35 @@ def update_call_notes(call_id):
     return jsonify({"notes": call.notes})
 
 
+@bp.route("/calls/<uuid:call_id>/reanalyze", methods=["POST"])
+def reanalyze_call(call_id):
+    """Re-run the deep analysis + summary pass for a completed call using
+    the current templates, tenant context, and prompts."""
+    from callisto.tasks import reanalyze_call as reanalyze_task
+
+    call = db.get_or_404(Call, call_id)
+    if call.status == "active":
+        return jsonify({
+            "error": "Cannot re-analyze a call that is still in progress.",
+        }), 409
+
+    has_transcript = (
+        Transcript.query.filter_by(call_id=call.id).first() is not None
+    )
+    if not has_transcript:
+        return jsonify({
+            "error": "Cannot re-analyze — no transcript is available for this call.",
+        }), 409
+
+    # Flip status back to "processing" so the UI shows that work is in flight;
+    # compute_cost_accounting will set it to "completed" when the chain finishes.
+    call.status = "processing"
+    db.session.commit()
+
+    reanalyze_task.apply_async(args=[str(call.id)])
+    return jsonify({"status": "queued"}), 202
+
+
 @bp.route("/calls/<uuid:call_id>/transcript", methods=["GET"])
 def get_transcript(call_id):
     # Sort chronologically by start time so two-speaker conversations merge

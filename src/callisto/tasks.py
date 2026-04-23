@@ -183,20 +183,28 @@ def run_deep_analysis(self, pipeline_data: dict):
         )
         return pipeline_data
 
+    def _applies_to_label(val: str) -> str:
+        if val == "external":
+            return "evaluate ONLY against [external] utterances"
+        if val == "internal":
+            return "evaluate ONLY against [internal] utterances"
+        return "evaluate against BOTH [external] and [internal] utterances"
+
     template_descriptions = "\n".join(
         f"- Template ID: {t.id}\n"
         f"  Name: {t.name}\n"
         f"  Category: {t.category}\n"
         f"  Severity: {t.severity}\n"
+        f"  Applies to: {_applies_to_label(t.applies_to or 'both')}\n"
         f"  Detection criteria: {t.prompt}"
         for t in templates
     )
 
     context_section = ""
     if tenant_context and tenant_context.strip():
-        context_section = f"""## Business Context
+        context_section = f"""## Context
 
-Analyze the call through the lens of the following context about the business and the types of calls they typically handle:
+Analyze the call through the lens of the following context about the Callisto user (which may be a business, a team, or an individual) and the kinds of calls they typically handle:
 
 {tenant_context.strip()}
 
@@ -205,10 +213,12 @@ Analyze the call through the lens of the following context about the business an
     prompt = f"""You are an expert call analyst performing deep post-call analysis. You have access to the COMPLETE call transcript — analyze it holistically for patterns that may only be visible in full context.
 
 The transcript is from a two-party phone conversation. Each line is prefixed with the speaker:
-- [external] = the person outside the organization (the contact on the other end of the call)
-- [internal] = the person inside the organization using Callisto (handling or placing the call on behalf of the business)
+- [external] = the other party on the call (the contact on the other end)
+- [internal] = the Callisto user on this call. This may be someone acting on behalf of a business or team, OR a single individual using Callisto for their own personal calls. Do not assume the internal speaker represents a company, has colleagues, or has an employer unless the transcript or business context says so.
 
 Pay close attention to who said what. A template about the external party's intent should key off [external] utterances; a template about how the internal party is conducting the call should key off [internal] utterances.
+
+Each template has an "Applies to" constraint. If a template says to evaluate only against [external] utterances, you MUST NOT detect it based on anything the [internal] speaker said (and vice versa). Evidence quotes for such a template must come from the matching speaker's lines only.
 
 {context_section}## Insight Templates to Evaluate
 
@@ -348,9 +358,9 @@ def generate_summary(self, pipeline_data: dict):
 
     context_section = ""
     if tenant_context and tenant_context.strip():
-        context_section = f"""## Business Context
+        context_section = f"""## Context
 
-Analyze the call through the lens of the following context:
+Analyze the call through the lens of the following context about the Callisto user (which may be a business, a team, or an individual):
 
 {tenant_context.strip()}
 
@@ -359,8 +369,8 @@ Analyze the call through the lens of the following context:
     prompt = f"""Analyze this phone call transcript and produce a structured summary.
 
 The transcript is from a two-party phone conversation. Each line is prefixed with the speaker:
-- [external] = the person outside the organization (the contact on the other end of the call)
-- [internal] = the person inside the organization using Callisto (handling or placing the call on behalf of the business)
+- [external] = the other party on the call (the contact on the other end)
+- [internal] = the Callisto user on this call. This may be someone acting on behalf of a business or team, OR a single individual using Callisto for their own personal calls. Do not assume the internal speaker represents a company, has colleagues, or has an employer unless the transcript or business context says so.
 
 {context_section}## Transcript
 
@@ -374,7 +384,7 @@ Respond with a JSON object containing:
 - "key_topics": an array of 3-8 topic strings (e.g. "billing", "cancellation", "product feedback")
 - "action_items": an array of objects, each with:
   - "text": description of the action item
-  - "assignee": "internal" (the organization's side), "external" (the other party), or "company" (the organization as a whole)
+  - "assignee": "internal" (the Callisto user), "external" (the other party), or "shared" (a joint follow-up). Only use "shared" when it genuinely applies to both; default to "internal" or "external" otherwise.
   - "priority": "high", "medium", or "low"
 
 If the transcript is too short or unclear for meaningful analysis, still provide your best assessment.
@@ -490,6 +500,56 @@ def compute_cost_accounting(self, pipeline_data: dict):
         "status": "completed",
         "total_tokens": total_tokens,
     }
+
+
+# ---------------------------------------------------------------------------
+# Re-analyze an existing call
+# ---------------------------------------------------------------------------
+
+@celery.task(bind=True, name="callisto.reanalyze_call")
+def reanalyze_call(self, call_id: str):
+    """Re-run deep analysis and summary for a call that has already been
+    processed. Uses the transcript chunks already in the database — does not
+    require the original audio file. Previous post-call insights and the
+    existing summary are wiped first so the new run replaces them."""
+    call = db.session.get(Call, call_id)
+    if not call:
+        raise ValueError(f"Call {call_id} not found")
+
+    chunks = (
+        Transcript.query
+        .filter_by(call_id=call.id)
+        .order_by(Transcript.start_ms, Transcript.chunk_index)
+        .all()
+    )
+    if not chunks:
+        logger.warning("Re-analyze skipped for %s: no transcript chunks", call_id)
+        return
+
+    full_transcript = _render_transcript(chunks)
+
+    # Drop prior post-call insights so they don't accumulate. Real-time
+    # insights (source='realtime') captured during the live call are kept.
+    Insight.query.filter_by(call_id=call.id, source="post_call").delete()
+    db.session.commit()
+
+    pipeline_data = {
+        "call_id": call_id,
+        "tenant_id": str(call.tenant_id),
+        "audio_path": "",
+        "full_transcript": full_transcript,
+        "segment_count": len(chunks),
+        "total_input_tokens": 0,
+        "total_output_tokens": 0,
+    }
+
+    pipeline = chain(
+        run_deep_analysis.s(pipeline_data),
+        generate_summary.s(),
+        compute_cost_accounting.s(),
+    )
+    pipeline.apply_async()
+    logger.info("Dispatched re-analysis pipeline for call %s", call_id)
 
 
 # ---------------------------------------------------------------------------

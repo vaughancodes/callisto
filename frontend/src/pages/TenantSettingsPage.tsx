@@ -408,24 +408,26 @@ export function TenantSettingsPage() {
 
           <div>
             <label className="block text-sm font-medium text-page-text mb-1">
-              Business Context
+              Context
             </label>
             <p className="text-xs text-page-text-secondary mb-2">
-              Describe your business and the conversations your team
-              typically has over the phone — whether calls come in or your
-              team places them. This context is provided to the LLM during
-              analysis, so insights are evaluated through the lens of your
-              business. For example: "We're a university admissions office.
-              Our calls are usually with prospective students or parents
-              discussing application deadlines, financial aid, campus
-              visits, and program requirements."
+              Describe the kinds of calls that happen here — whether on
+              behalf of a business, a team, or just you personally. This
+              context is provided to the LLM during analysis so insights
+              are evaluated through the right lens. For a business, that
+              might be: "We're a university admissions office. Our calls
+              are usually with prospective students or parents discussing
+              application deadlines, financial aid, campus visits, and
+              program requirements." For an individual, it might be:
+              "Personal line. Most calls are with contractors about home
+              repairs, appointments with my doctor's office, or family."
             </p>
             <textarea
               value={context}
               onChange={(e) => setContext(e.target.value)}
               rows={8}
               className="w-full px-3 py-2 border border-card-border rounded-lg text-sm bg-page-bg-tertiary text-page-text"
-              placeholder="Describe your business and the typical reasons people call..."
+              placeholder="Describe who's on this line and the typical reasons for calls..."
             />
           </div>
 

@@ -16,6 +16,7 @@ from callisto.api import (  # noqa: E402, F401
     contacts,
     google_sync,
     organizations,
+    template_categories,
     templates,
     tenant_settings,
     tenants,

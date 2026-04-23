@@ -309,6 +309,7 @@ class InsightEvaluator:
                     "prompt": t.prompt,
                     "category": t.category,
                     "severity": t.severity,
+                    "applies_to": t.applies_to or "both",
                 }
                 for t in templates
             ]
@@ -323,19 +324,27 @@ class InsightEvaluator:
         context: str | None = None,
     ) -> list[dict]:
         """Run LLM evaluation on the current window text."""
+        def _applies_to_label(val: str) -> str:
+            if val == "external":
+                return "evaluate ONLY against [external] utterances"
+            if val == "internal":
+                return "evaluate ONLY against [internal] utterances"
+            return "evaluate against BOTH [external] and [internal] utterances"
+
         template_descriptions = "\n".join(
             f"- Template ID: {t['id']}\n"
             f"  Name: {t['name']}\n"
             f"  Severity: {t['severity']}\n"
+            f"  Applies to: {_applies_to_label(t.get('applies_to', 'both'))}\n"
             f"  Detection criteria: {t['prompt']}"
             for t in templates
         )
 
         context_section = ""
         if context and context.strip():
-            context_section = f"""## Business Context
+            context_section = f"""## Context
 
-Analyze the call through the lens of the following context about the business and the types of calls they typically handle:
+Analyze the call through the lens of the following context about the Callisto user (which may be a business, a team, or an individual) and the kinds of calls they typically handle:
 
 {context.strip()}
 
@@ -344,10 +353,12 @@ Analyze the call through the lens of the following context about the business an
         prompt = f"""You are a real-time call analyst. Evaluate this transcript excerpt against the insight templates. This is a LIVE call — only report insights clearly present in the text.
 
 The transcript is from a two-party phone conversation. Each line is prefixed with the speaker:
-- [external] = the person outside the organization (the contact on the other end of the call — this may be someone calling in, or someone being called)
-- [internal] = the person inside the organization using Callisto (the one handling or placing the call on behalf of the business)
+- [external] = the other party on the call (the contact on the other end — this may be someone calling in, or someone being called)
+- [internal] = the Callisto user on this call. This may be someone acting on behalf of a business or team, OR a single individual using Callisto for their own personal calls. Do not assume the internal speaker represents a company, has colleagues, or has an employer unless the transcript or business context says so.
 
 Consider BOTH speakers when evaluating templates. Pay attention to who said what — a template about the external party's intent should key off [external] utterances, while templates about how the internal party is conducting the call (compliance, tone, commitments) should key off [internal] utterances.
+
+Each template has an "Applies to" constraint. If a template says to evaluate only against [external] utterances, you MUST NOT detect it based on anything the [internal] speaker said (and vice versa). Evidence quotes for such a template must come from the matching speaker's lines only.
 
 {context_section}## Templates
 {template_descriptions}

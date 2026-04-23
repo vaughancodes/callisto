@@ -50,6 +50,14 @@ export function ContactDetailPage() {
   const { data: contact, isLoading } = useQuery({
     queryKey: ["contact", contactId],
     queryFn: () => apiFetch<ContactDetailData>(`/api/v1/contacts/${contactId}`),
+    refetchInterval: (query) => {
+      const calls = query.state.data?.calls ?? [];
+      const inFlight = calls.some(
+        (c: { status: string }) =>
+          c.status === "active" || c.status === "processing"
+      );
+      return inFlight ? 3000 : false;
+    },
   });
 
   useDocumentTitle(contact ? contact.name : "Contact");

@@ -30,6 +30,7 @@ def revoke_sip_user(pn: PhoneNumber) -> None:
     clear the local columns. Safe to call when no SIP user is configured
     (no-op). Errors from Twilio are logged but don't block the caller."""
     if not pn.sip_credential_sid:
+        pn.sip_username = None
         return
     tenant = Tenant.query.filter_by(id=pn.tenant_id).first() if pn.tenant_id else None
     list_sid = tenant.sip_credential_list_sid if tenant else None
@@ -45,6 +46,20 @@ def revoke_sip_user(pn: PhoneNumber) -> None:
             )
     pn.sip_username = None
     pn.sip_credential_sid = None
+
+
+def clear_tenant_assignment_state(pn: PhoneNumber) -> None:
+    """Reset per-tenant state on a phone number when it's being unassigned
+    or moved between tenants. Deletes the Twilio SIP user, clears the local
+    SIP columns, wipes the tenant-chosen friendly name, and resets routing
+    flags to safe defaults. Must be called BEFORE pn.tenant_id is changed
+    so that revoke_sip_user can find the correct credential list."""
+    revoke_sip_user(pn)
+    pn.friendly_name = None
+    pn.inbound_enabled = False
+    pn.outbound_enabled = False
+    pn.inbound_mode = "none"
+    pn.inbound_forward_to = None
 
 logger = logging.getLogger(__name__)
 
@@ -244,17 +259,13 @@ def update_org_number(org_id, number_id):
     )
 
     if not same_tenant:
-        # Any tenant change (assign/unassign/reassign) revokes the SIP
-        # credential — it was minted against the previous tenant's SIP
-        # Domain and would no longer be valid.
-        revoke_sip_user(pn)
+        # Any tenant change (assign/unassign/reassign) deletes the Twilio
+        # SIP user (it was minted against the previous tenant's SIP Domain)
+        # and wipes the tenant-specific friendly name + routing flags.
+        clear_tenant_assignment_state(pn)
 
     if new_tenant_id is None:
         pn.tenant_id = None
-        pn.inbound_enabled = False
-        pn.outbound_enabled = False
-        pn.inbound_mode = "none"
-        pn.inbound_forward_to = None
     else:
         tenant = Tenant.query.filter_by(id=new_tenant_id).first()
         if not tenant or str(tenant.organization_id) != str(org_id):
@@ -263,13 +274,6 @@ def update_org_number(org_id, number_id):
             }), 404
         if not same_tenant:
             pn.tenant_id = tenant.id
-            # Newly-assigned numbers start with no routing — the tenant
-            # admin explicitly opts in to inbound/outbound from Tenant
-            # Settings.
-            pn.inbound_enabled = False
-            pn.outbound_enabled = False
-            pn.inbound_mode = "none"
-            pn.inbound_forward_to = None
 
     db.session.commit()
     return jsonify(_serialize_phone_number(pn))

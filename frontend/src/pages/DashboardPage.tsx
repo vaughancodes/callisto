@@ -18,7 +18,14 @@ export function DashboardPage() {
         `/api/v1/tenants/${tenant!.id}/calls?per_page=50`
       ),
     enabled: !!tenant,
-    refetchInterval: 10000,
+    refetchInterval: (query) => {
+      const calls = query.state.data?.calls ?? [];
+      const inFlight = calls.some(
+        (c) => c.status === "active" || c.status === "processing"
+      );
+      // Poll fast while something is running, slow otherwise.
+      return inFlight ? 3000 : 10000;
+    },
   });
 
   if (isLoading) {

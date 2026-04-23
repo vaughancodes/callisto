@@ -29,6 +29,11 @@ class InsightTemplate(db.Model):
     outbound_enabled: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="true"
     )
+    # Which speaker's utterances this template evaluates against:
+    # "external", "internal", or "both".
+    applies_to: Mapped[str] = mapped_column(
+        String, nullable=False, server_default="both"
+    )
     output_schema: Mapped[dict | None] = mapped_column(JSONB)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[str] = mapped_column(DateTime(timezone=True), server_default=func.now())

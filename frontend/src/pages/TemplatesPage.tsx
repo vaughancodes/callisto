@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, X } from "lucide-react";
+import { AlertCircle, Pencil, Plus, Tag, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Dropdown } from "../components/Dropdown";
@@ -20,12 +20,23 @@ interface Template {
   is_realtime: boolean;
   inbound_enabled: boolean;
   outbound_enabled: boolean;
+  applies_to: "external" | "internal" | "both";
   output_schema: unknown;
   active: boolean;
 }
 
-const categories = ["sales", "support", "compliance", "custom"];
+interface Category {
+  id: string;
+  tenant_id: string;
+  name: string;
+}
+
 const severities = ["info", "warning", "critical"];
+const appliesToOptions = [
+  { value: "both", label: "Both speakers" },
+  { value: "external", label: "External only" },
+  { value: "internal", label: "Internal only" },
+];
 
 export function TemplatesPage() {
   useDocumentTitle("Templates");
@@ -37,13 +48,16 @@ export function TemplatesPage() {
   // create a new template from an existing one without editing it in place).
   const [formDefaults, setFormDefaults] = useState<Template | null>(null);
   const [deleting, setDeleting] = useState<Template | null>(null);
+  const [showCategories, setShowCategories] = useState(false);
   const [category, setCategory] = useState<string>("custom");
   const [severity, setSeverity] = useState<string>("info");
+  const [appliesTo, setAppliesTo] = useState<string>("both");
 
   useEffect(() => {
     if (showForm) {
       setCategory(formDefaults?.category ?? "custom");
       setSeverity(formDefaults?.severity ?? "info");
+      setAppliesTo(formDefaults?.applies_to ?? "both");
     }
   }, [showForm, formDefaults]);
 
@@ -53,6 +67,19 @@ export function TemplatesPage() {
       apiFetch<Template[]>(`/api/v1/tenants/${tenant!.id}/templates`),
     enabled: !!tenant,
   });
+
+  const { data: categoriesData } = useQuery({
+    queryKey: ["template-categories", tenant?.id],
+    queryFn: () =>
+      apiFetch<Category[]>(
+        `/api/v1/tenants/${tenant!.id}/template-categories`
+      ),
+    enabled: !!tenant,
+  });
+  const categoryOptions = (categoriesData ?? []).map((c) => ({
+    value: c.name,
+    label: c.name,
+  }));
 
   const createMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
@@ -98,6 +125,7 @@ export function TemplatesPage() {
       is_realtime: form.get("is_realtime") === "on",
       inbound_enabled: form.get("inbound_enabled") === "on",
       outbound_enabled: form.get("outbound_enabled") === "on",
+      applies_to: form.get("applies_to"),
     };
 
     if (editing) {
@@ -123,17 +151,26 @@ export function TemplatesPage() {
             mentions of a specific topic.
           </p>
         </div>
-        <button
-          onClick={() => {
-            setEditing(null);
-            setFormDefaults(null);
-            setShowForm(true);
-          }}
-          className="flex items-center gap-2 px-4 py-2 bg-brand-sky text-white rounded-lg hover:bg-brand-sky/80 transition-colors text-sm shrink-0"
-        >
-          <Plus className="w-4 h-4" />
-          New Template
-        </button>
+        <div className="flex gap-2 shrink-0">
+          <button
+            onClick={() => setShowCategories(true)}
+            className="flex items-center gap-2 px-3 py-2 bg-card-bg border border-card-border rounded-lg hover:bg-page-hover text-sm text-page-text"
+          >
+            <Tag className="w-4 h-4" />
+            Manage Categories
+          </button>
+          <button
+            onClick={() => {
+              setEditing(null);
+              setFormDefaults(null);
+              setShowForm(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-brand-sky text-white rounded-lg hover:bg-brand-sky/80 transition-colors text-sm"
+          >
+            <Plus className="w-4 h-4" />
+            New Template
+          </button>
+        </div>
       </div>
 
       {/* Template list */}
@@ -314,8 +351,24 @@ export function TemplatesPage() {
                     name="category"
                     value={category}
                     onChange={setCategory}
-                    options={categories.map((c) => ({ value: c, label: c }))}
+                    options={
+                      categoryOptions.some((o) => o.value === category)
+                        ? categoryOptions
+                        : [
+                            ...categoryOptions,
+                            { value: category, label: category },
+                          ]
+                    }
                   />
+                  <p className="text-xs text-page-text-muted mt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowCategories(true)}
+                      className="text-brand-sky hover:underline"
+                    >
+                      Manage categories
+                    </button>
+                  </p>
                 </div>
                 <div>
                   <label className="flex items-center gap-1.5 text-sm font-medium text-page-text mb-1">
@@ -351,6 +404,25 @@ export function TemplatesPage() {
                     </HelpTooltip>
                   </span>
                 </label>
+              </div>
+              <div>
+                <label className="flex items-center gap-1.5 text-sm font-medium text-page-text mb-1">
+                  Applies to speaker
+                  <HelpTooltip>
+                    Which side of the conversation this template evaluates
+                    against. "External only" fires on the other party's
+                    utterances (e.g. a pricing question from a prospect),
+                    "Internal only" fires on your team's utterances (e.g. a
+                    compliance disclosure), and "Both speakers" evaluates
+                    the whole conversation.
+                  </HelpTooltip>
+                </label>
+                <Dropdown
+                  name="applies_to"
+                  value={appliesTo}
+                  onChange={setAppliesTo}
+                  options={appliesToOptions}
+                />
               </div>
               <div>
                 <label className="flex items-center gap-1.5 text-sm font-medium text-page-text mb-2">
@@ -398,6 +470,220 @@ export function TemplatesPage() {
           </div>
         </div>
       )}
+
+      {showCategories && tenant && (
+        <CategoriesModal
+          tenantId={tenant.id}
+          onClose={() => setShowCategories(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function CategoriesModal({
+  tenantId,
+  onClose,
+}: {
+  tenantId: string;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [newName, setNewName] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const extractError = (err: Error): string => {
+    const match = err.message.match(/API error \d+: (.*)/);
+    if (match) {
+      try {
+        const parsed = JSON.parse(match[1]);
+        if (parsed?.error) return parsed.error;
+      } catch {
+        /* fall through */
+      }
+    }
+    return err.message;
+  };
+
+  const { data: categories, isLoading } = useQuery({
+    queryKey: ["template-categories", tenantId],
+    queryFn: () =>
+      apiFetch<Category[]>(
+        `/api/v1/tenants/${tenantId}/template-categories`
+      ),
+  });
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["template-categories"] });
+    queryClient.invalidateQueries({ queryKey: ["templates"] });
+  };
+
+  const createMutation = useMutation({
+    mutationFn: (name: string) =>
+      apiFetch(`/api/v1/tenants/${tenantId}/template-categories`, {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      }),
+    onSuccess: () => {
+      setNewName("");
+      setError(null);
+      invalidate();
+    },
+    onError: (err: Error) => setError(extractError(err)),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) =>
+      apiFetch(`/api/v1/template-categories/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({ name }),
+      }),
+    onSuccess: () => {
+      setEditingId(null);
+      setEditName("");
+      setError(null);
+      invalidate();
+    },
+    onError: (err: Error) => setError(extractError(err)),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/api/v1/template-categories/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      setError(null);
+      invalidate();
+    },
+    onError: (err: Error) => setError(extractError(err)),
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+      <div className="bg-card-bg rounded-xl shadow-lg w-full max-w-md p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-page-text">
+            Manage Categories
+          </h3>
+          <button
+            onClick={onClose}
+            className="p-1 hover:bg-page-hover rounded"
+          >
+            <X className="w-5 h-5 text-page-text" />
+          </button>
+        </div>
+
+        {error && (
+          <div className="mb-3 flex items-start gap-2 p-3 rounded-lg bg-danger/10 border border-danger/30 text-danger">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <p className="text-sm leading-snug">{error}</p>
+          </div>
+        )}
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const name = newName.trim();
+            if (!name) return;
+            createMutation.mutate(name);
+          }}
+          className="flex gap-2 mb-4"
+        >
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="New category name"
+            className="flex-1 px-3 py-2 border border-card-border rounded-lg text-sm bg-page-bg-tertiary text-page-text"
+          />
+          <button
+            type="submit"
+            disabled={!newName.trim() || createMutation.isPending}
+            className="px-3 py-2 text-sm bg-brand-sky text-white rounded-lg hover:bg-brand-sky/80 disabled:opacity-50"
+          >
+            Add
+          </button>
+        </form>
+
+        {isLoading ? (
+          <p className="text-sm text-page-text-muted py-3 text-center">
+            Loading...
+          </p>
+        ) : (categories ?? []).length === 0 ? (
+          <p className="text-sm text-page-text-muted py-3 text-center">
+            No categories yet. Add one above.
+          </p>
+        ) : (
+          <ul className="divide-y divide-page-divider border border-card-border rounded-lg overflow-hidden">
+            {categories!.map((c) => (
+              <li
+                key={c.id}
+                className="flex items-center gap-2 px-3 py-2 hover:bg-page-hover"
+              >
+                {editingId === c.id ? (
+                  <>
+                    <input
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      autoFocus
+                      className="flex-1 px-2 py-1 border border-card-border rounded text-sm bg-page-bg-tertiary text-page-text"
+                    />
+                    <button
+                      onClick={() => {
+                        const name = editName.trim();
+                        if (!name) return;
+                        updateMutation.mutate({ id: c.id, name });
+                      }}
+                      className="text-xs px-2 py-1 bg-brand-sky text-white rounded hover:bg-brand-sky/80"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditingId(null);
+                        setEditName("");
+                        setError(null);
+                      }}
+                      className="text-xs px-2 py-1 text-page-text-secondary hover:bg-page-hover rounded"
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex-1 text-sm text-page-text">
+                      {c.name}
+                    </span>
+                    <button
+                      onClick={() => {
+                        setEditingId(c.id);
+                        setEditName(c.name);
+                        setError(null);
+                      }}
+                      title="Rename"
+                      className="p-1 text-brand-sky hover:bg-brand-sky/10 rounded"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => deleteMutation.mutate(c.id)}
+                      title="Delete"
+                      className="p-1 text-danger hover:bg-danger/10 rounded"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <p className="text-xs text-page-text-muted mt-3">
+          Renaming a category updates every template that uses it. A category
+          can't be deleted while active templates still reference it.
+        </p>
+      </div>
     </div>
   );
 }
