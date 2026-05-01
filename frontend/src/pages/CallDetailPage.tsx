@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import { ArrowLeft, AudioLines, RefreshCw, Voicemail } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { PhoneLink } from "../components/LinkedContact";
 import { PageLoadingSpinner } from "../components/LoadingSpinner";
+import { useActiveTranscriptChunk } from "../hooks/useActiveTranscriptChunk";
+import { useAuthedAudio } from "../hooks/useAuthedAudio";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useInsightStream } from "../hooks/useWebSocket";
 import { apiFetch } from "../lib/api";
@@ -53,6 +55,17 @@ interface CallData {
   ended_at: string | null;
   duration_sec: number | null;
   notes: string | null;
+  has_voicemail?: boolean;
+  has_recording?: boolean;
+}
+
+interface VoicemailData {
+  started_at: string;
+  started_at_ms: number;
+  dial_status: string | null;
+  duration_sec: number | null;
+  has_recording: boolean;
+  transcript: TranscriptChunk[];
 }
 
 function formatTime(ms: number): string {
@@ -140,6 +153,27 @@ export function CallDetailPage() {
     refetchInterval: call?.status === "processing" ? 3000 : false,
     retry: false,
   });
+
+  const { data: voicemail } = useQuery({
+    queryKey: ["voicemail", callId],
+    queryFn: () =>
+      apiFetch<VoicemailData>(`/api/v1/calls/${callId}/voicemail`),
+    enabled: !!call?.has_voicemail,
+    retry: false,
+  });
+
+  const callAudioUrl = useAuthedAudio(
+    call?.has_recording ? `/api/v1/calls/${callId}/audio` : null
+  );
+  // useState (not useRef) so the hook re-subscribes when the conditionally-
+  // rendered <audio> element mounts after the blob URL loads.
+  const [callAudioEl, setCallAudioEl] = useState<HTMLAudioElement | null>(null);
+  const activeFullIdx = useActiveTranscriptChunk(callAudioEl, transcript, 0);
+  const activeVoicemailIdx = useActiveTranscriptChunk(
+    callAudioEl,
+    voicemail?.transcript,
+    0
+  );
 
   const saveNotes = useMutation({
     mutationFn: (notes: string) =>
@@ -268,39 +302,160 @@ export function CallDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Transcript */}
         <div className="lg:col-span-3 space-y-6">
+          {call?.has_recording && (
+            <div className="bg-card-bg rounded-lg border border-card-border">
+              <div className="p-4 border-b border-card-border flex items-center gap-2">
+                <AudioLines className="w-4 h-4 text-brand-sky" />
+                <h3 className="font-semibold text-page-text">
+                  Call Recording
+                </h3>
+                {call.duration_sec != null && (
+                  <span className="text-xs text-page-text-muted">
+                    {call.duration_sec}s
+                  </span>
+                )}
+              </div>
+              <div className="p-4">
+                {callAudioUrl ? (
+                  <audio
+                    ref={setCallAudioEl}
+                    controls
+                    preload="metadata"
+                    src={callAudioUrl}
+                    className="w-full"
+                  />
+                ) : (
+                  <p className="text-sm text-page-text-muted">
+                    Loading recording...
+                  </p>
+                )}
+                {voicemail?.started_at_ms != null && (
+                  <p className="text-xs text-page-text-muted mt-2">
+                    <Voicemail className="w-3 h-3 inline mr-1 text-accent-lavender" />
+                    Voicemail starts at {formatTime(voicemail.started_at_ms)}.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+          {voicemail && voicemail.transcript.length > 0 && (
+            <div className="bg-card-bg rounded-lg border border-card-border">
+              <div className="p-4 border-b border-card-border flex items-center gap-2">
+                <Voicemail className="w-4 h-4 text-accent-lavender" />
+                <h3 className="font-semibold text-page-text">
+                  Voicemail Transcript
+                </h3>
+                {voicemail.duration_sec != null && (
+                  <span className="text-xs text-page-text-muted">
+                    {voicemail.duration_sec}s
+                  </span>
+                )}
+              </div>
+              <div className="p-4 max-h-[260px] overflow-auto space-y-2">
+                {voicemail.transcript.map((chunk, i) => {
+                  const active = i === activeVoicemailIdx;
+                  const seek = () => {
+                    if (callAudioEl) {
+                      callAudioEl.currentTime = chunk.start_ms / 1000;
+                      void callAudioEl.play().catch(() => {});
+                    }
+                  };
+                  return (
+                    <div
+                      key={`vm-${chunk.chunk_index}-${i}`}
+                      ref={(el) => {
+                        if (active && el) {
+                          el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      onClick={seek}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          seek();
+                        }
+                      }}
+                      className={`flex gap-3 px-2 py-1 -mx-2 rounded transition-colors cursor-pointer hover:bg-page-hover ${
+                        active
+                          ? "bg-brand-sky/10 border-l-2 border-brand-sky"
+                          : "border-l-2 border-transparent"
+                      }`}
+                    >
+                      <span className="text-xs text-page-text-muted w-12 shrink-0 pt-0.5 text-right">
+                        {formatTime(chunk.start_ms - voicemail.started_at_ms)}
+                      </span>
+                      <span className="text-sm text-page-text flex-1 min-w-0">
+                        {chunk.text}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {!call?.has_voicemail && (
           <div className="bg-card-bg rounded-lg border border-card-border">
             <div className="p-4 border-b border-card-border">
               <h3 className="font-semibold text-page-text">Transcript</h3>
             </div>
             <div className="p-4 max-h-[600px] overflow-auto space-y-3">
-              {transcript?.map((chunk, i) => (
-                <div
-                  key={`${chunk.chunk_index}-${i}`}
-                  className="flex gap-3"
-                >
-                  <span className="text-xs text-page-text-muted w-12 shrink-0 pt-0.5 text-right">
-                    {formatTime(chunk.start_ms)}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    {chunk.speaker && chunk.speaker !== "unknown" && (
-                      <span
-                        className={`text-[10px] uppercase font-semibold tracking-wide mr-2 ${
-                          chunk.speaker === "external"
-                            ? "text-accent-light"
-                            : chunk.speaker === "internal"
-                              ? "text-accent-periwinkle"
-                              : "text-page-text-muted"
-                        }`}
-                      >
-                        {chunk.speaker}
-                      </span>
-                    )}
-                    <span className="text-sm text-page-text">
-                      {chunk.text}
+              {transcript?.map((chunk, i) => {
+                const active = i === activeFullIdx;
+                const seek = () => {
+                  if (callAudioEl) {
+                    callAudioEl.currentTime = chunk.start_ms / 1000;
+                    void callAudioEl.play().catch(() => {});
+                  }
+                };
+                return (
+                  <div
+                    key={`${chunk.chunk_index}-${i}`}
+                    ref={(el) => {
+                      if (active && el) {
+                        el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    onClick={seek}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        seek();
+                      }
+                    }}
+                    className={`flex gap-3 px-2 py-1 -mx-2 rounded transition-colors cursor-pointer hover:bg-page-hover ${
+                      active
+                        ? "bg-brand-sky/10 border-l-2 border-brand-sky"
+                        : "border-l-2 border-transparent"
+                    }`}
+                  >
+                    <span className="text-xs text-page-text-muted w-12 shrink-0 pt-0.5 text-right">
+                      {formatTime(chunk.start_ms)}
                     </span>
+                    <div className="flex-1 min-w-0">
+                      {chunk.speaker && chunk.speaker !== "unknown" && (
+                        <span
+                          className={`text-[10px] uppercase font-semibold tracking-wide mr-2 ${
+                            chunk.speaker === "external"
+                              ? "text-accent-light"
+                              : chunk.speaker === "internal"
+                                ? "text-accent-periwinkle"
+                                : "text-page-text-muted"
+                          }`}
+                        >
+                          {chunk.speaker}
+                        </span>
+                      )}
+                      <span className="text-sm text-page-text">
+                        {chunk.text}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {(!transcript || transcript.length === 0) && (
                 <p className="text-page-text-muted text-sm text-center py-4">
                   No transcript available
@@ -308,6 +463,7 @@ export function CallDetailPage() {
               )}
             </div>
           </div>
+          )}
 
           {/* Notes */}
           <div className="bg-card-bg rounded-lg border border-card-border">

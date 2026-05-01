@@ -28,6 +28,7 @@ from pathlib import Path
 
 import redis as sync_redis
 import websockets
+from sqlalchemy.orm.attributes import flag_modified
 
 from callisto.ingestion.audio import AudioBuffer, decode_twilio_media
 
@@ -63,7 +64,12 @@ class CallSession:
         self.custom_params: dict = {}
         self.buffer = AudioBuffer(chunk_duration_ms=500)
         self.chunk_index = 0
-        self.all_pcm = bytearray()
+        # Separate per-track buffers. On stop we interleave them into a
+        # stereo WAV (L=inbound/external, R=outbound/internal) so playback
+        # preserves both sides at the correct duration regardless of
+        # call type (answered, forwarded, voicemail).
+        self.inbound_pcm = bytearray()
+        self.outbound_pcm = bytearray()
         self.started_at: datetime | None = None
         self.transcript_chunk_index = 0
         # One Deepgram streamer per track: "external" (inbound) and "internal" (outbound)
@@ -138,7 +144,15 @@ async def handle_twilio_stream(websocket):
                 track = media.get("track", "inbound")
 
                 pcm_16khz = decode_twilio_media(payload)
-                session.all_pcm.extend(pcm_16khz)
+                # Route per-track PCM into its own buffer. Interleaving
+                # both into a single mono buffer (the old behavior) tagged
+                # as 16kHz packed 2× the samples per wall-second, causing
+                # half-speed, choppy playback and skewed time offsets. We
+                # combine the two buffers into a stereo WAV at stream end.
+                if track == "outbound":
+                    session.outbound_pcm.extend(pcm_16khz)
+                else:
+                    session.inbound_pcm.extend(pcm_16khz)
 
                 chunks = session.buffer.ingest(pcm_16khz)
                 for chunk in chunks:
@@ -160,14 +174,16 @@ async def handle_twilio_stream(websocket):
                         _whisper_transcribe_and_publish(session, speaker)
 
             elif event == "stop":
+                total_pcm = len(session.inbound_pcm) + len(session.outbound_pcm)
                 logger.info(
-                    "Stream stopped: call_sid=%s (%d chunks, %d bytes PCM)",
-                    session.call_sid, session.chunk_index, len(session.all_pcm),
+                    "Stream stopped: call_sid=%s (%d chunks, %d bytes PCM "
+                    "[in=%d out=%d])",
+                    session.call_sid, session.chunk_index, total_pcm,
+                    len(session.inbound_pcm), len(session.outbound_pcm),
                 )
 
                 if session.buffer.has_remaining():
-                    remaining = session.buffer.flush()
-                    session.all_pcm.extend(remaining)
+                    session.buffer.flush()
                     session.chunk_index += 1
 
                 # Flush STT
@@ -194,7 +210,9 @@ async def handle_twilio_stream(websocket):
                         "type": "end",
                     })
 
-                if session.call_sid and len(session.all_pcm) > 0:
+                if session.call_sid and (
+                    len(session.inbound_pcm) > 0 or len(session.outbound_pcm) > 0
+                ):
                     _on_call_end(session)
 
     except websockets.exceptions.ConnectionClosed:
@@ -203,7 +221,9 @@ async def handle_twilio_stream(websocket):
             await session.deepgram_external.close()
         if session.deepgram_internal:
             await session.deepgram_internal.close()
-        if session.call_sid and len(session.all_pcm) > 0:
+        if session.call_sid and (
+            len(session.inbound_pcm) > 0 or len(session.outbound_pcm) > 0
+        ):
             _on_call_end(session)
 
 
@@ -427,14 +447,39 @@ def _on_call_end(session: CallSession):
     Path(dest_dir).mkdir(parents=True, exist_ok=True)
     wav_path = os.path.join(dest_dir, f"{session.call_sid}.wav")
 
-    with wave.open(wav_path, "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(16000)
-        wf.writeframes(bytes(session.all_pcm))
+    # Interleave the two per-track buffers into a stereo WAV:
+    # left channel = inbound (external), right channel = outbound (internal).
+    # Pad the shorter buffer with silence so channels stay time-aligned —
+    # Twilio generally delivers in lockstep but the two tracks can drift
+    # by a frame or two when the call ends mid-tick.
+    sample_width = 2  # 16-bit PCM
+    in_pcm = bytes(session.inbound_pcm)
+    out_pcm = bytes(session.outbound_pcm)
+    target_len = max(len(in_pcm), len(out_pcm))
+    if len(in_pcm) < target_len:
+        in_pcm = in_pcm + b"\x00" * (target_len - len(in_pcm))
+    if len(out_pcm) < target_len:
+        out_pcm = out_pcm + b"\x00" * (target_len - len(out_pcm))
 
-    duration_sec = len(session.all_pcm) // (16000 * 2)
-    logger.info("Saved %ds of audio to %s", duration_sec, wav_path)
+    stereo = bytearray(target_len * 2)
+    for i in range(0, target_len, sample_width):
+        stereo[i * 2:i * 2 + sample_width] = in_pcm[i:i + sample_width]
+        stereo[i * 2 + sample_width:i * 2 + sample_width * 2] = (
+            out_pcm[i:i + sample_width]
+        )
+
+    with wave.open(wav_path, "wb") as wf:
+        wf.setnchannels(2)
+        wf.setsampwidth(sample_width)
+        wf.setframerate(16000)
+        wf.writeframes(bytes(stereo))
+
+    duration_sec = target_len // (16000 * sample_width)
+    logger.info(
+        "Saved %ds of stereo audio (in=%dB out=%dB) to %s",
+        duration_sec, len(session.inbound_pcm),
+        len(session.outbound_pcm), wav_path,
+    )
 
     app = create_app()
     with app.app_context():
@@ -446,6 +491,12 @@ def _on_call_end(session: CallSession):
         call.status = "processing"
         call.ended_at = datetime.now()
         call.duration_sec = duration_sec
+        # Persist the on-disk WAV path so the API can serve the audio
+        # (voicemail slice today; full-call playback later).
+        if call.metadata_ is None:
+            call.metadata_ = {}
+        call.metadata_["recording_path"] = wav_path
+        flag_modified(call, "metadata_")
         db.session.commit()
 
         from callisto.tasks import process_call_end

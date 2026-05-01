@@ -63,6 +63,35 @@ class Config:
     # Frontend
     FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5308")
 
+    # Where uploaded voicemail greeting audio files live. One file per tenant,
+    # named by tenant id. Served publicly (unauth) via /webhooks/voicemail/greeting/
+    # so Twilio can <Play> it.
+    VOICEMAIL_GREETINGS_DIR = os.environ.get(
+        "VOICEMAIL_GREETINGS_DIR", "data/voicemail_greetings"
+    )
+    VOICEMAIL_MAX_UPLOAD_BYTES = int(
+        os.environ.get("VOICEMAIL_MAX_UPLOAD_BYTES", str(5 * 1024 * 1024))
+    )
+    # Caps the voicemail recording length Twilio will capture, in seconds.
+    VOICEMAIL_MAX_LENGTH_SECONDS = int(
+        os.environ.get("VOICEMAIL_MAX_LENGTH_SECONDS", "120")
+    )
+    # Dial timeout used when a number's voicemail_mode is "app". Deliberately
+    # short so we answer before the carrier/desk phone's own voicemail does.
+    VOICEMAIL_DIAL_TIMEOUT_SECONDS = int(
+        os.environ.get("VOICEMAIL_DIAL_TIMEOUT_SECONDS", "15")
+    )
+
+    # ntfy.sh push notification on /demo visits. Default empty so the
+    # feature is disabled unless NTFY_DEMO_TOPIC is set in .env. The
+    # topic itself is effectively a secret (anyone who knows it can
+    # subscribe), so we never hard-code it in the repo.
+    NTFY_DEMO_TOPIC = os.environ.get("NTFY_DEMO_TOPIC", "").strip()
+    NTFY_BASE_URL = os.environ.get("NTFY_BASE_URL", "https://ntfy.sh").rstrip("/")
+    DEMO_VISIT_NOTIFY_COOLDOWN_SECONDS = int(
+        os.environ.get("DEMO_VISIT_NOTIFY_COOLDOWN_SECONDS", "300")
+    )
+
     CELERY = {
         "broker_url": os.environ.get("REDIS_URL", "redis://localhost:6380/0"),
         "result_backend": os.environ.get("REDIS_URL", "redis://localhost:6380/0"),

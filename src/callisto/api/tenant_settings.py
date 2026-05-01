@@ -27,6 +27,7 @@ def _serialize_tenant(t: Tenant) -> dict:
         "context": t.context,
         "forward_to": settings.get("forward_to", ""),
         "twilio_numbers": settings.get("twilio_numbers", []),
+        "audio_retention_days": settings.get("audio_retention_days"),
         "settings": settings,
     }
 
@@ -66,6 +67,28 @@ def update_tenant_settings(tenant_id):
             tenant.settings = {}
         tenant.settings["forward_to"] = (data["forward_to"] or "").strip()
         flag_modified(tenant, "settings")
+    if "audio_retention_days" in data:
+        raw = data["audio_retention_days"]
+        if raw in (None, "", 0, "0"):
+            value = None
+        else:
+            try:
+                value = int(raw)
+            except (TypeError, ValueError):
+                return jsonify({
+                    "error": "audio_retention_days must be a positive integer or null",
+                }), 400
+            if value < 1:
+                return jsonify({
+                    "error": "audio_retention_days must be >= 1 (or null to keep forever)",
+                }), 400
+        if tenant.settings is None:
+            tenant.settings = {}
+        if value is None:
+            tenant.settings.pop("audio_retention_days", None)
+        else:
+            tenant.settings["audio_retention_days"] = value
+        flag_modified(tenant, "settings")
     if "settings" in data:
         tenant.settings = data["settings"]
 
@@ -89,6 +112,7 @@ def _serialize_phone_number(p: PhoneNumber) -> dict:
         "has_sip_user": p.sip_username is not None,
         "inbound_mode": p.inbound_mode,
         "inbound_forward_to": p.inbound_forward_to,
+        "voicemail_mode": p.voicemail_mode,
     }
 
 
@@ -186,6 +210,11 @@ def update_tenant_number(tenant_id, number_id):
     if "inbound_forward_to" in data:
         ift = (data["inbound_forward_to"] or "").strip() or None
         pn.inbound_forward_to = ift
+    if "voicemail_mode" in data:
+        vm = (data["voicemail_mode"] or "carrier").strip()
+        if vm not in ("carrier", "app"):
+            return jsonify({"error": f"Invalid voicemail_mode: {vm}"}), 400
+        pn.voicemail_mode = vm
     db.session.commit()
     return jsonify(_serialize_phone_number(pn))
 

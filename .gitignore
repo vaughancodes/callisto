@@ -40,9 +40,12 @@ Thumbs.db
 # Docker
 *.log
 
-# Recordings (audio files from calls)
+# Recordings (audio files from calls) — keep large per-call WAVs out
+# of the repo. Demo TTS audio is exempted below since it ships as a
+# static asset for the /demo sandbox.
 *.wav
 *.mp3
+!data/demo_audio/**/*.wav
 
 # Celery
 celerybeat-schedule

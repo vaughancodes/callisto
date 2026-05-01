@@ -24,6 +24,7 @@ function GithubIcon({ className }: { className?: string }) {
 }
 
 const APP_URL = "https://app.callisto.works";
+const DEMO_URL = `${APP_URL}/demo`;
 
 const features = [
   {
@@ -118,6 +119,12 @@ export default function App() {
             How it works
           </a>
           <a
+            href={DEMO_URL}
+            className="hidden sm:inline text-sm text-text-secondary hover:text-text-primary transition-colors"
+          >
+            Demo
+          </a>
+          <a
             href={APP_URL}
             className="text-sm font-medium text-white bg-brand-sky/90 hover:bg-brand-sky px-4 py-2 rounded-lg transition-colors"
           >
@@ -155,17 +162,17 @@ export default function App() {
         </p>
         <div className="mt-10 flex flex-wrap justify-center gap-4">
           <a
-            href={APP_URL}
+            href={DEMO_URL}
             className="group inline-flex items-center gap-2 px-6 py-3 bg-brand-sky text-white rounded-lg font-medium hover:bg-brand-sky/90 transition-colors"
           >
-            Launch the dashboard
+            Try the interactive demo
             <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
           </a>
           <a
-            href="#features"
+            href={APP_URL}
             className="inline-flex items-center gap-2 px-6 py-3 border border-surface-border text-text-primary rounded-lg font-medium hover:bg-surface-elevated transition-colors"
           >
-            See what it does
+            Launch the dashboard
           </a>
         </div>
       </section>

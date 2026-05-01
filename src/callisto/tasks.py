@@ -12,10 +12,12 @@ import json
 import logging
 import math
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from celery import chain
 from openai import OpenAI
+from sqlalchemy.orm.attributes import flag_modified
 
 from callisto.celery_app import celery
 from callisto.config import Config
@@ -47,6 +49,7 @@ def process_call_end(self, call_id: str, tenant_id: str, audio_path: str):
         run_deep_analysis.s(),
         generate_summary.s(),
         compute_cost_accounting.s(),
+        prune_expired_recordings.s(tenant_id=tenant_id),
     )
     pipeline.apply_async()
     logger.info("Dispatched cold-path pipeline for call %s", call_id)
@@ -80,20 +83,34 @@ def assemble_full_transcript(self, pipeline_data: dict):
     )
 
     if existing_chunks:
+        # Voicemail calls: discard the internal track (ringback + our
+        # <Play>ed greeting) and anything before the voicemail boundary.
+        # What's left is just the caller's message — the right substrate
+        # for summary / insight / action-item analysis.
+        vm = (call.metadata_ or {}).get("voicemail") or {}
+        is_voicemail = bool(vm.get("started_at"))
+        if is_voicemail:
+            boundary_ms = int(vm.get("started_at_ms") or 0)
+            existing_chunks = [
+                c for c in existing_chunks
+                if c.speaker == "external" and (c.start_ms or 0) >= boundary_ms
+            ]
+
         full_transcript = _render_transcript(existing_chunks)
         logger.info(
-            "Assembled transcript from %d hot-path chunks for call %s",
+            "Assembled transcript from %d hot-path chunks for call %s"
+            "%s",
             len(existing_chunks), call_id,
+            " (voicemail)" if is_voicemail else "",
         )
-        try:
-            Path(audio_path).unlink(missing_ok=True)
-        except OSError:
-            pass
+        # Keep the WAV on disk — the API serves voicemail audio from it
+        # (and can serve full-call audio later).
 
         return {
             **pipeline_data,
             "full_transcript": full_transcript,
             "segment_count": len(existing_chunks),
+            "is_voicemail": is_voicemail,
         }
 
     # Fallback: Whisper re-transcription
@@ -127,15 +144,16 @@ def assemble_full_transcript(self, pipeline_data: dict):
     logger.info("Stored %d Whisper transcript chunks for call %s", len(segments), call_id)
 
     full_transcript = _render_transcript(fallback_chunks)
-    try:
-        Path(audio_path).unlink(missing_ok=True)
-    except OSError:
-        pass
+    # Keep the WAV on disk — the API serves voicemail audio from it.
+
+    vm = (call.metadata_ or {}).get("voicemail") or {}
+    is_voicemail = bool(vm.get("started_at"))
 
     return {
         **pipeline_data,
         "full_transcript": full_transcript,
         "segment_count": len(segments),
+        "is_voicemail": is_voicemail,
     }
 
 
@@ -154,6 +172,7 @@ def run_deep_analysis(self, pipeline_data: dict):
     call_id = pipeline_data["call_id"]
     tenant_id = pipeline_data["tenant_id"]
     full_transcript = pipeline_data["full_transcript"]
+    is_voicemail = bool(pipeline_data.get("is_voicemail"))
 
     if not full_transcript.strip():
         logger.info("Empty transcript for call %s — skipping deep analysis", call_id)
@@ -210,7 +229,31 @@ Analyze the call through the lens of the following context about the Callisto us
 
 """
 
-    prompt = f"""You are an expert call analyst performing deep post-call analysis. You have access to the COMPLETE call transcript — analyze it holistically for patterns that may only be visible in full context.
+    is_outbound = direction.startswith("outbound")
+    direction_section = (
+        "## Call Direction (context only; do not restate in outputs)\n\n"
+        + (
+            "This was an OUTBOUND call (internal party dialed external). "
+            "Use this as background when judging whether templates are "
+            "triggered. Do not restate who called whom in evidence or "
+            "reasoning.\n\n"
+            if is_outbound
+            else "This was an INBOUND call (external party dialed internal). "
+            "Use this as background when judging whether templates are "
+            "triggered. Do not restate who called whom in evidence or "
+            "reasoning.\n\n"
+        )
+    )
+
+    voicemail_section = ""
+    if is_voicemail:
+        voicemail_section = """## Important: This Call Is a Voicemail
+
+The Callisto user did NOT answer this call. The transcript below contains ONLY the caller's recorded voicemail message; there is no live two-party conversation to analyze. Any insight about how the internal party handled the call is not applicable: they weren't on the line. Evaluate templates solely against what the caller said in their message.
+
+"""
+
+    prompt = f"""You are an expert call analyst performing deep post-call analysis. You have access to the COMPLETE call transcript. Analyze it holistically for patterns that may only be visible in full context.
 
 The transcript is from a two-party phone conversation. Each line is prefixed with the speaker:
 - [external] = the other party on the call (the contact on the other end)
@@ -220,7 +263,7 @@ Pay close attention to who said what. A template about the external party's inte
 
 Each template has an "Applies to" constraint. If a template says to evaluate only against [external] utterances, you MUST NOT detect it based on anything the [internal] speaker said (and vice versa). Evidence quotes for such a template must come from the matching speaker's lines only.
 
-{context_section}## Insight Templates to Evaluate
+{direction_section}{voicemail_section}{context_section}## Insight Templates to Evaluate
 
 {template_descriptions}
 
@@ -344,6 +387,7 @@ def generate_summary(self, pipeline_data: dict):
     call_id = pipeline_data["call_id"]
     tenant_id = pipeline_data["tenant_id"]
     full_transcript = pipeline_data["full_transcript"]
+    is_voicemail = bool(pipeline_data.get("is_voicemail"))
 
     if not full_transcript.strip():
         logger.info("Empty transcript for call %s — skipping summary", call_id)
@@ -366,26 +410,54 @@ Analyze the call through the lens of the following context about the Callisto us
 
 """
 
+    direction = (call.direction or "inbound")
+    is_outbound = direction.startswith("outbound")
+    direction_section = (
+        "## Call Direction (context only; do not restate in the summary)\n\n"
+        + (
+            "This was an OUTBOUND call (internal party dialed external). "
+            "Use this as background to interpret what you're reading. "
+            "do not restate who called whom or phrases like \"the "
+            "internal party reached out\". Focus the summary on the "
+            "substance of the conversation.\n\n"
+            if is_outbound
+            else "This was an INBOUND call (external party dialed internal). "
+            "Use this as background to interpret what you're reading "
+            "Do not restate who called whom or phrases like \"the "
+            "external party reached out\". Focus the summary on the "
+            "substance of the conversation.\n\n"
+        )
+    )
+
+    voicemail_section = ""
+    if is_voicemail:
+        voicemail_section = """## Important: This Call Is a Voicemail
+
+The Callisto user did NOT answer this call. The transcript below contains ONLY the caller's recorded voicemail message; there is no live two-party conversation. Frame the summary as "caller left a voicemail saying ..." rather than as a dialogue, and draw sentiment only from the caller's tone.
+
+"""
+
     prompt = f"""Analyze this phone call transcript and produce a structured summary.
 
 The transcript is from a two-party phone conversation. Each line is prefixed with the speaker:
 - [external] = the other party on the call (the contact on the other end)
 - [internal] = the Callisto user on this call. This may be someone acting on behalf of a business or team, OR a single individual using Callisto for their own personal calls. Do not assume the internal speaker represents a company, has colleagues, or has an employer unless the transcript or business context says so.
 
-{context_section}## Transcript
+{direction_section}{voicemail_section}{context_section}## Transcript
 
 {full_transcript}
 
 ## Instructions
 
 Respond with a JSON object containing:
-- "summary": a concise 2-4 sentence executive summary of the call that accurately reflects both parties' roles
+- "summary": a concise 2-4 sentence executive summary focused on what was discussed and what it means; new information gained from the call. Do not restate facts already obvious from context (who called whom, that it was inbound/outbound, etc.). Avoid em-dashes in the prose.
 - "sentiment": one of "positive", "negative", "neutral", or "mixed" (reflecting the overall tone of the call)
 - "key_topics": an array of 3-8 topic strings (e.g. "billing", "cancellation", "product feedback")
 - "action_items": an array of objects, each with:
-  - "text": description of the action item
-  - "assignee": "internal" (the Callisto user), "external" (the other party), or "shared" (a joint follow-up). Only use "shared" when it genuinely applies to both; default to "internal" or "external" otherwise.
+  - "text": description of the action item, phrased as something the Callisto user (the "internal" party) should do next. The action item must belong to the internal party. Do NOT include things the external party said they would do; those are not action items.
+  - "assignee": always "internal". This field exists only for schema compatibility; omit the item entirely if the action is not for the internal party.
   - "priority": "high", "medium", or "low"
+  Only include an action item when there is a concrete follow-up the internal party should take. If nothing is required of them, return an empty array.
 
 If the transcript is too short or unclear for meaningful analysis, still provide your best assessment.
 
@@ -422,13 +494,27 @@ Respond ONLY with the JSON object."""
             "total_output_tokens": pipeline_data.get("total_output_tokens", 0) + out_tok,
         }
 
+    # Defensive filter: the prompt says action items are for the internal
+    # party only, but models occasionally slip in external/shared items.
+    # Drop any that aren't explicitly assigned to internal, and force the
+    # assignee field to "internal" on the remainder.
+    action_items = []
+    for item in result.get("action_items", []):
+        if not isinstance(item, dict):
+            continue
+        assignee = (item.get("assignee") or "internal").strip().lower()
+        if assignee and assignee != "internal":
+            continue
+        item["assignee"] = "internal"
+        action_items.append(item)
+
     # Store the summary
     existing = CallSummary.query.filter_by(call_id=call.id).first()
     if existing:
         existing.summary = result.get("summary", "")
         existing.sentiment = result.get("sentiment", "neutral")
         existing.key_topics = result.get("key_topics", [])
-        existing.action_items = result.get("action_items", [])
+        existing.action_items = action_items
         existing.llm_model = Config.LLM_MODEL
     else:
         db.session.add(CallSummary(
@@ -437,7 +523,7 @@ Respond ONLY with the JSON object."""
             summary=result.get("summary", ""),
             sentiment=result.get("sentiment", "neutral"),
             key_topics=result.get("key_topics", []),
-            action_items=result.get("action_items", []),
+            action_items=action_items,
             llm_model=Config.LLM_MODEL,
             token_cost=0,
         ))
@@ -448,7 +534,7 @@ Respond ONLY with the JSON object."""
         call_id,
         result.get("sentiment"),
         len(result.get("key_topics", [])),
-        len(result.get("action_items", [])),
+        len(action_items),
     )
 
     return {
@@ -526,6 +612,15 @@ def reanalyze_call(self, call_id: str):
         logger.warning("Re-analyze skipped for %s: no transcript chunks", call_id)
         return
 
+    vm = (call.metadata_ or {}).get("voicemail") or {}
+    is_voicemail = bool(vm.get("started_at"))
+    if is_voicemail:
+        boundary_ms = int(vm.get("started_at_ms") or 0)
+        chunks = [
+            c for c in chunks
+            if c.speaker == "external" and (c.start_ms or 0) >= boundary_ms
+        ]
+
     full_transcript = _render_transcript(chunks)
 
     # Drop prior post-call insights so they don't accumulate. Real-time
@@ -541,6 +636,7 @@ def reanalyze_call(self, call_id: str):
         "segment_count": len(chunks),
         "total_input_tokens": 0,
         "total_output_tokens": 0,
+        "is_voicemail": is_voicemail,
     }
 
     pipeline = chain(
@@ -550,6 +646,76 @@ def reanalyze_call(self, call_id: str):
     )
     pipeline.apply_async()
     logger.info("Dispatched re-analysis pipeline for call %s", call_id)
+
+
+# ---------------------------------------------------------------------------
+# Audio retention — auto-delete recordings past the tenant's window
+# ---------------------------------------------------------------------------
+
+@celery.task(bind=True, name="callisto.prune_expired_recordings")
+def prune_expired_recordings(self, prev_result=None, tenant_id: str | None = None):
+    """Delete the saved WAV for any call in ``tenant_id`` whose recording is
+    older than the tenant's configured retention window. Transcripts and
+    insights are left intact — only the on-disk audio and its
+    ``metadata.recording_path`` key are removed.
+
+    Retention lives in ``tenant.settings["audio_retention_days"]``; 0 / null
+    means keep forever. Chained off the end of the cold-path pipeline so
+    every newly-completed call enforces its tenant's policy.
+    """
+    if not tenant_id:
+        return prev_result
+
+    tenant = db.session.get(Tenant, tenant_id)
+    if tenant is None:
+        return prev_result
+
+    settings = tenant.settings or {}
+    retention_days = settings.get("audio_retention_days")
+    try:
+        retention_days = int(retention_days) if retention_days else 0
+    except (TypeError, ValueError):
+        retention_days = 0
+    if retention_days <= 0:
+        return prev_result
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+
+    candidates = (
+        Call.query
+        .filter(Call.tenant_id == tenant_id)
+        .filter(Call.ended_at.isnot(None))
+        .filter(Call.ended_at < cutoff)
+        .all()
+    )
+
+    deleted = 0
+    for call in candidates:
+        meta = call.metadata_ or {}
+        path = meta.get("recording_path")
+        if not path:
+            continue
+        try:
+            Path(path).unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning(
+                "Could not remove expired recording for call %s: %s",
+                call.id, exc,
+            )
+            continue
+        meta.pop("recording_path", None)
+        call.metadata_ = meta
+        flag_modified(call, "metadata_")
+        deleted += 1
+
+    if deleted:
+        db.session.commit()
+        logger.info(
+            "Pruned %d expired recording(s) for tenant %s (retention=%dd)",
+            deleted, tenant_id, retention_days,
+        )
+
+    return prev_result
 
 
 # ---------------------------------------------------------------------------

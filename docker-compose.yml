@@ -37,12 +37,22 @@ services:
       FLASK_APP: callisto.app:create_app
       FLASK_DEBUG: "1"
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:5309}
+      DEMO_AUDIO_DIR: /app/data/demo_audio
     ports:
       - "5309:5309"
     volumes:
       - ./src:/app/src
       - ./alembic:/app/alembic
       - ./alembic.ini:/app/alembic.ini
+      # Shared with ingestion + worker so the API can serve voicemail audio
+      # out of the per-call WAV written by the ingestion server.
+      - recordings:/tmp/callisto_recordings
+      # Pre-rendered demo call audio shipped with the repo. Generated
+      # with `docker compose exec api python -m callisto.demo_audio` and
+      # served as static assets; no runtime TTS at boot. Bind mount
+      # (not :ro) so re-running the generator from inside the container
+      # writes back to the host.
+      - ./data/demo_audio:/app/data/demo_audio
     depends_on:
       postgres:
         condition: service_healthy

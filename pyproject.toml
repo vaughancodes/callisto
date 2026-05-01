@@ -22,6 +22,8 @@ dependencies = [
     "PyJWT>=2.8,<3",
     "flask-cors>=5.0,<6",
     "twilio>=9.3,<10",
+    "edge-tts>=7.0,<8",
+    "pydub>=0.25,<1",
 ]
 
 [project.optional-dependencies]

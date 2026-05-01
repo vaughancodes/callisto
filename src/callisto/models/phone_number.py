@@ -56,6 +56,13 @@ class PhoneNumber(db.Model):
         String, nullable=False, server_default="none"
     )
     inbound_forward_to: Mapped[str | None] = mapped_column(String)
+    # What happens when an inbound call isn't answered: "carrier" lets the
+    # destination (desk phone / forwarded carrier) handle voicemail, "app"
+    # makes Callisto catch it with a shorter Dial timeout so we beat the
+    # carrier's own voicemail pickup.
+    voicemail_mode: Mapped[str] = mapped_column(
+        String, nullable=False, server_default="carrier"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

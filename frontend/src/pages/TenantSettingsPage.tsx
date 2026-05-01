@@ -7,7 +7,9 @@ import {
   EyeOff,
   Shield,
   Trash2,
+  Upload,
   UserPlus,
+  Volume2,
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -26,6 +28,7 @@ interface TenantSettings {
   slug: string;
   description: string | null;
   context: string | null;
+  audio_retention_days: number | null;
   settings: Record<string, unknown>;
 }
 
@@ -48,6 +51,15 @@ interface PhoneNumberData {
   has_sip_user: boolean;
   inbound_mode: "none" | "sip" | "forward";
   inbound_forward_to: string | null;
+  voicemail_mode: "carrier" | "app";
+}
+
+interface VoicemailGreeting {
+  configured: boolean;
+  filename?: string;
+  content_type?: string;
+  size_bytes?: number;
+  uploaded_at?: string;
 }
 
 interface SipCredentialResponse {
@@ -204,6 +216,7 @@ export function TenantSettingsPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [context, setContext] = useState("");
+  const [retentionDays, setRetentionDays] = useState<string>("");
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [showAddMember, setShowAddMember] = useState(false);
   const [removingMember, setRemovingMember] = useState<Member | null>(null);
@@ -214,7 +227,9 @@ export function TenantSettingsPage() {
   const [editOutbound, setEditOutbound] = useState(false);
   const [editInboundMode, setEditInboundMode] = useState<"none" | "sip" | "forward">("none");
   const [editForwardTo, setEditForwardTo] = useState("");
+  const [editVoicemailMode, setEditVoicemailMode] = useState<"carrier" | "app">("carrier");
   const [editError, setEditError] = useState<string | null>(null);
+  const [greetingUploadError, setGreetingUploadError] = useState<string | null>(null);
   const [revealedCreds, setRevealedCreds] = useState<SipCredentialResponse | null>(null);
   const [removingSipUser, setRemovingSipUser] = useState<PhoneNumberData | null>(null);
 
@@ -230,6 +245,11 @@ export function TenantSettingsPage() {
       setName(settings.name);
       setDescription(settings.description ?? "");
       setContext(settings.context ?? "");
+      setRetentionDays(
+        settings.audio_retention_days != null
+          ? String(settings.audio_retention_days)
+          : ""
+      );
     }
   }, [settings]);
 
@@ -255,6 +275,7 @@ export function TenantSettingsPage() {
       friendly_name?: string | null;
       inbound_mode?: "none" | "sip" | "forward";
       inbound_forward_to?: string | null;
+      voicemail_mode?: "carrier" | "app";
     }) => {
       const { numberId, ...body } = vars;
       return apiFetch(
@@ -296,6 +317,44 @@ export function TenantSettingsPage() {
       queryClient.invalidateQueries({ queryKey: ["tenant-numbers", tenant?.id] });
       setRemovingSipUser(null);
     },
+  });
+
+  const { data: greeting } = useQuery({
+    queryKey: ["voicemail-greeting", tenant?.id],
+    queryFn: () =>
+      apiFetch<VoicemailGreeting>(
+        `/api/v1/tenants/${tenant!.id}/voicemail/greeting`
+      ),
+    enabled: !!tenant && isTenantAdmin,
+  });
+
+  const uploadGreeting = useMutation({
+    mutationFn: (file: File) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      return apiFetch<VoicemailGreeting>(
+        `/api/v1/tenants/${tenant!.id}/voicemail/greeting`,
+        { method: "POST", body: fd }
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["voicemail-greeting", tenant?.id],
+      });
+      setGreetingUploadError(null);
+    },
+    onError: (err: Error) => setGreetingUploadError(err.message),
+  });
+
+  const deleteGreeting = useMutation({
+    mutationFn: () =>
+      apiFetch(`/api/v1/tenants/${tenant!.id}/voicemail/greeting`, {
+        method: "DELETE",
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: ["voicemail-greeting", tenant?.id],
+      }),
   });
 
   const saveSettings = useMutation({
@@ -366,8 +425,11 @@ export function TenantSettingsPage() {
 
   const handleSave = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const trimmed = retentionDays.trim();
+    const retentionPayload = trimmed === "" ? null : Number(trimmed);
     saveSettings.mutate({
       context: context || null,
+      audio_retention_days: retentionPayload,
     });
   };
 
@@ -431,6 +493,25 @@ export function TenantSettingsPage() {
             />
           </div>
 
+          <div>
+            <label className="block text-sm font-medium text-page-text mb-1">
+              Audio Retention (days)
+            </label>
+            <p className="text-xs text-page-text-secondary mb-2">
+              Call recordings are automatically deleted after this many
+              days. Transcripts, insights, and summaries are kept
+              regardless. Leave blank to keep recordings forever.
+            </p>
+            <input
+              type="number"
+              min={1}
+              value={retentionDays}
+              onChange={(e) => setRetentionDays(e.target.value)}
+              placeholder="e.g. 30"
+              className="w-40 px-3 py-2 border border-card-border rounded-lg text-sm bg-page-bg-tertiary text-page-text"
+            />
+          </div>
+
 
           <div className="flex items-center gap-3">
             <button
@@ -491,6 +572,11 @@ export function TenantSettingsPage() {
                         Disabled
                       </span>
                     )}
+                    {p.inbound_enabled && p.voicemail_mode === "app" && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-accent-lavender/10 text-accent-lavender">
+                        App voicemail
+                      </span>
+                    )}
                   </div>
                 </td>
                 <td className="p-4">
@@ -502,6 +588,7 @@ export function TenantSettingsPage() {
                       setEditOutbound(p.outbound_enabled);
                       setEditInboundMode(p.inbound_mode);
                       setEditForwardTo(p.inbound_forward_to ?? "");
+                      setEditVoicemailMode(p.voicemail_mode);
                       setEditError(null);
                     }}
                     className="text-xs px-2.5 py-1 border border-brand-sky text-brand-sky rounded-md hover:bg-brand-sky/10 transition-colors"
@@ -521,6 +608,69 @@ export function TenantSettingsPage() {
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Voicemail greeting */}
+      <div className="bg-card-bg rounded-lg border border-card-border mb-6">
+        <div className="p-4 border-b border-card-border">
+          <h3 className="font-semibold text-page-text flex items-center gap-2">
+            <Volume2 className="w-4 h-4" />
+            Voicemail Greeting
+          </h3>
+          <p className="text-xs text-page-text-secondary mt-1">
+            Audio file played to callers when a number set to "Callisto
+            voicemail" doesn't get picked up. One greeting per tenant, used
+            for every number with that mode enabled. MP3 or WAV, up to 5 MB.
+          </p>
+        </div>
+        <div className="p-6 space-y-4">
+          {greeting?.configured ? (
+            <div className="flex items-center justify-between gap-3 p-3 border border-card-border rounded-lg bg-page-bg-tertiary">
+              <div className="text-sm">
+                <p className="font-mono text-page-text">
+                  {greeting.filename}
+                </p>
+                <p className="text-xs text-page-text-muted">
+                  {greeting.content_type}
+                  {greeting.size_bytes != null &&
+                    ` · ${Math.round(greeting.size_bytes / 1024)} KB`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => deleteGreeting.mutate()}
+                className="text-xs px-2.5 py-1 border border-danger text-danger rounded-md hover:bg-danger/10 transition-colors"
+              >
+                <Trash2 className="w-3 h-3 inline" /> Remove
+              </button>
+            </div>
+          ) : (
+            <p className="text-sm text-page-text-secondary">
+              No greeting uploaded — callers will hear a generic "leave a
+              message" prompt until one is set.
+            </p>
+          )}
+          <label className="inline-flex items-center gap-2 px-3 py-1.5 border border-brand-sky text-brand-sky rounded-md hover:bg-brand-sky/10 transition-colors cursor-pointer text-sm">
+            <Upload className="w-4 h-4" />
+            {greeting?.configured ? "Replace Greeting" : "Upload Greeting"}
+            <input
+              type="file"
+              accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/wave,.mp3,.wav"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) uploadGreeting.mutate(f);
+                e.target.value = "";
+              }}
+              className="hidden"
+            />
+          </label>
+          {uploadGreeting.isPending && (
+            <p className="text-sm text-page-text-muted">Uploading...</p>
+          )}
+          {greetingUploadError && (
+            <p className="text-sm text-danger">{greetingUploadError}</p>
+          )}
+        </div>
       </div>
 
       {/* Members */}
@@ -691,6 +841,7 @@ export function TenantSettingsPage() {
                     editInboundMode === "forward"
                       ? editForwardTo.trim() || null
                       : null,
+                  voicemail_mode: editVoicemailMode,
                 });
               }}
               className="space-y-5"
@@ -776,6 +927,47 @@ export function TenantSettingsPage() {
                       placeholder="+15551234567"
                       className="mt-2 w-full px-3 py-2 border border-card-border rounded-lg text-sm bg-page-bg-tertiary text-page-text"
                     />
+                  )}
+                </div>
+              )}
+
+              {editInbound && editInboundMode !== "none" && (
+                <div>
+                  <label className="block text-sm font-medium text-page-text mb-1">
+                    Voicemail
+                  </label>
+                  <p className="text-xs text-page-text-muted mb-2">
+                    When the call isn't answered, who takes the voicemail?
+                  </p>
+                  <Dropdown
+                    value={editVoicemailMode}
+                    onChange={(v) =>
+                      setEditVoicemailMode(v as "carrier" | "app")
+                    }
+                    options={[
+                      {
+                        value: "carrier",
+                        label: "Phone / carrier voicemail",
+                      },
+                      {
+                        value: "app",
+                        label: "Callisto voicemail (record + transcribe)",
+                      },
+                    ]}
+                  />
+                  {editVoicemailMode === "app" && !greeting?.configured && (
+                    <p className="mt-2 text-xs text-warning">
+                      No greeting uploaded yet — callers will hear a
+                      default message until you upload one in the
+                      Voicemail Greeting section below.
+                    </p>
+                  )}
+                  {editVoicemailMode === "app" && (
+                    <p className="mt-2 text-xs text-page-text-muted">
+                      Callisto answers within about 15 seconds — short
+                      enough to beat most desk phones / carriers to the
+                      line.
+                    </p>
                   )}
                 </div>
               )}

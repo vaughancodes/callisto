@@ -8,16 +8,19 @@ import { CallDetailPage } from "./pages/CallDetailPage";
 import { ContactDetailPage } from "./pages/ContactDetailPage";
 import { ContactsPage } from "./pages/ContactsPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { DemoPage } from "./pages/DemoPage";
 import { LoginPage } from "./pages/LoginPage";
 import { OrganizationSettingsPage } from "./pages/OrganizationSettingsPage";
 import { TemplatesPage } from "./pages/TemplatesPage";
 import { TenantSettingsPage } from "./pages/TenantSettingsPage";
+import { VoicemailsPage } from "./pages/VoicemailsPage";
 
 export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/auth/callback" element={<AuthCallbackPage />} />
+      <Route path="/demo" element={<DemoPage />} />
       <Route
         element={
           <ProtectedRoute>
@@ -36,6 +39,7 @@ export default function App() {
           element={<OrganizationSettingsPage />}
         />
         <Route path="/analytics" element={<AnalyticsPage />} />
+        <Route path="/voicemails" element={<VoicemailsPage />} />
         <Route path="/admin" element={<AdminPage />} />
       </Route>
     </Routes>

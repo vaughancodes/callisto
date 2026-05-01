@@ -4,6 +4,7 @@ import {
   ChevronsUpDown,
   Cog,
   FileText,
+  Info,
   LayoutDashboard,
   LogOut,
   Moon,
@@ -16,6 +17,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { Tooltip } from "../components/Tooltip";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
+import { exitDemo, isDemoMode } from "../lib/demoMode";
 
 export function DashboardLayout() {
   const {
@@ -266,10 +268,17 @@ export function DashboardLayout() {
                   )}
                 </button>
               </Tooltip>
-              <Tooltip content="Log out">
+              <Tooltip content={isDemoMode() ? "Exit demo" : "Log out"}>
                 <button
-                  onClick={logout}
-                  aria-label="Log out"
+                  onClick={() => {
+                    if (isDemoMode()) {
+                      exitDemo();
+                      window.location.href = "/demo";
+                    } else {
+                      logout();
+                    }
+                  }}
+                  aria-label={isDemoMode() ? "Exit demo" : "Log out"}
                   className="p-2 text-[#64748b] hover:text-[#e2e8f0] rounded transition-colors"
                 >
                   <LogOut className="w-4 h-4" />
@@ -281,6 +290,24 @@ export function DashboardLayout() {
       </aside>
 
       <main className="flex-1 overflow-auto">
+        {isDemoMode() && (
+          <div className="bg-accent-lavender/15 border-b border-accent-lavender/40 px-6 py-2 flex items-center gap-3 text-sm">
+            <Info className="w-4 h-4 text-accent-lavender shrink-0" />
+            <span className="text-page-text">
+              <span className="font-semibold">Demo mode</span> — viewing
+              seeded fake data. Editing and re-analysis are disabled.
+            </span>
+            <button
+              onClick={() => {
+                exitDemo();
+                window.location.href = "/demo";
+              }}
+              className="ml-auto text-xs px-2.5 py-1 border border-accent-lavender text-accent-lavender rounded-md hover:bg-accent-lavender/10 transition-colors"
+            >
+              Exit demo
+            </button>
+          </div>
+        )}
         <Outlet />
       </main>
     </div>

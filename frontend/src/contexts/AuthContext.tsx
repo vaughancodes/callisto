@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { apiFetch, clearToken, setToken } from "../lib/api";
+import { enterDemo, exitDemo, isDemoMode } from "../lib/demoMode";
 
 interface UserInfo {
   id: string;
@@ -87,12 +88,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const refresh = useCallback(async () => {
+    const demo = isDemoMode();
     const token = localStorage.getItem("callisto_token");
-    if (!token) {
+    if (!demo && !token) {
       setIsLoading(false);
       return;
     }
     try {
+      // In demo mode apiFetch rewrites /auth/me to the demo equivalent
+      // and returns a synthetic user + tenant from the fixture data.
       const data = await apiFetch<AuthMeResponse>("/auth/me");
       setUser(data.user);
       setTenant(data.tenant);
@@ -100,7 +104,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setMemberships(data.memberships);
       setOrganizationMemberships(data.organization_memberships ?? []);
     } catch {
-      clearToken();
+      if (demo) {
+        // Demo backend rejected — bail out of demo so the visitor isn't
+        // stuck on a blank page.
+        exitDemo();
+      } else {
+        clearToken();
+      }
     } finally {
       setIsLoading(false);
     }
@@ -135,6 +145,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const switchTenant = async (tenantId: string) => {
+    if (isDemoMode()) {
+      // No backend swap in demo mode: rewrite the localStorage demo
+      // slug to the target tenant and hard-reload so AuthProvider
+      // re-mounts and fetches /api/demo/me with the new slug.
+      const target = memberships.find((m) => m.tenant_id === tenantId);
+      if (!target) return;
+      enterDemo(target.tenant_slug);
+      window.location.href = "/";
+      return;
+    }
     const data = await apiFetch<{ token: string }>("/auth/switch-tenant", {
       method: "POST",
       body: JSON.stringify({ tenant_id: tenantId }),

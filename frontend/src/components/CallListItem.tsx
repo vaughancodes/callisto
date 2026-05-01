@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
+  ExternalLink,
   Phone,
   PhoneIncoming,
   PhoneOutgoing,
@@ -14,7 +15,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { PhoneLink } from "./LinkedContact";
 import { Tooltip } from "./Tooltip";
-import { formatDateTime, formatStatus } from "../lib/format";
+import { capitalize, formatDateTime, formatStatus } from "../lib/format";
 import { apiFetch } from "../lib/api";
 
 function DirectionIcon({ direction }: { direction: string }) {
@@ -94,13 +95,34 @@ export function CallListItem({
     },
   });
 
+  const toggleExpand = () => setExpanded((v) => !v);
+
   return (
     <div className="border-b border-page-divider last:border-b-0">
-      {/* Main row */}
-      <div className="flex items-center gap-3 p-4 hover:bg-page-hover transition-colors">
+      {/* Main row — clicking the row (or the chevron) expands inline.
+          The "View Details" button on the right navigates to the full
+          call detail page. Inner anchors (contact, phone, view-details)
+          stop propagation so they don't also fire the row toggle. */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={toggleExpand}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            toggleExpand();
+          }
+        }}
+        className="flex items-center gap-3 p-4 hover:bg-page-hover transition-colors cursor-pointer"
+      >
         {/* Expand arrow */}
         <button
-          onClick={() => setExpanded(!expanded)}
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleExpand();
+          }}
+          aria-label={expanded ? "Collapse" : "Expand"}
           className="p-0.5 text-page-text-muted hover:text-page-text-secondary"
         >
           {expanded ? (
@@ -113,19 +135,23 @@ export function CallListItem({
         {/* Status icon */}
         {statusIcon[call.status] ?? statusIcon.completed}
 
-        {/* Sentiment dot (invisible placeholder when missing, to keep alignment) */}
-        <span
-          className={`w-2 h-2 rounded-full shrink-0 ${
-            call.sentiment
-              ? sentimentDot[call.sentiment] ?? "bg-page-text-muted"
-              : "invisible"
-          }`}
-          title={call.sentiment ?? ""}
-        />
+        {/* Sentiment dot — styled tooltip on hover (or invisible placeholder
+            when missing, to keep alignment). */}
+        {call.sentiment ? (
+          <Tooltip content={capitalize(call.sentiment)}>
+            <span
+              className={`w-2 h-2 rounded-full shrink-0 ${
+                sentimentDot[call.sentiment] ?? "bg-page-text-muted"
+              }`}
+            />
+          </Tooltip>
+        ) : (
+          <span className="w-2 h-2 rounded-full shrink-0 invisible" />
+        )}
 
 
         {/* Main info */}
-        <Link to={`/calls/${call.id}`} className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0">
           {showDateAsTitle ? (
             <>
               <p className="text-sm font-medium text-page-text">
@@ -136,7 +162,9 @@ export function CallListItem({
                 {call.our_number_friendly_name && (
                   <span>{call.our_number_friendly_name} &middot;</span>
                 )}
-                <PhoneLink number={call.other_party_number ?? call.caller_number} />
+                <span onClick={(e) => e.stopPropagation()}>
+                  <PhoneLink number={call.other_party_number ?? call.caller_number} />
+                </span>
               </div>
             </>
           ) : (
@@ -155,12 +183,15 @@ export function CallListItem({
                     ) : (
                       call.contact_name
                     )}
-                    <span className="text-page-text-muted font-normal ml-2">
+                    <span className="text-page-text-muted font-normal ml-2"
+                          onClick={(e) => e.stopPropagation()}>
                       <PhoneLink number={call.other_party_number ?? call.caller_number} />
                     </span>
                   </>
                 ) : (
-                  <PhoneLink number={call.other_party_number ?? call.caller_number} />
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <PhoneLink number={call.other_party_number ?? call.caller_number} />
+                  </span>
                 )}
               </p>
               <div className="flex items-center gap-1.5 mt-0.5 text-xs text-page-text-secondary">
@@ -175,11 +206,13 @@ export function CallListItem({
               </div>
             </>
           )}
-        </Link>
+        </div>
 
-        {/* Topics preview */}
+        {/* Topics preview — only at very wide widths where the calls
+            column has real room. The dashboard splits into columns even
+            on big monitors, so the row stays cramped well past 2xl. */}
         {(call.topics?.length ?? 0) > 0 && (
-          <div className="hidden md:flex gap-1 shrink-0">
+          <div className="hidden min-[2100px]:flex gap-1 shrink-0">
             {call.topics!.slice(0, 3).map((t) => (
               <span
                 key={t}
@@ -217,6 +250,7 @@ export function CallListItem({
             </p>
           )}
         </div>
+
       </div>
 
       {/* Expanded section */}
@@ -288,6 +322,17 @@ export function CallListItem({
                 )}
               </div>
             )}
+          </div>
+
+          {/* View details */}
+          <div className="flex justify-start pt-2">
+            <Link
+              to={`/calls/${call.id}`}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium border border-brand-sky text-brand-sky rounded-md hover:bg-brand-sky/10 transition-colors"
+            >
+              View details
+              <ExternalLink className="w-3.5 h-3.5" />
+            </Link>
           </div>
         </div>
       )}

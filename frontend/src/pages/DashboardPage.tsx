@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { CallListItem, type CallListData } from "../components/CallListItem";
 import { PageLoadingSpinner } from "../components/LoadingSpinner";
+import { VoicemailsList } from "../components/VoicemailsList";
 import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useInsightStream } from "../hooks/useWebSocket";
@@ -55,8 +56,10 @@ export function DashboardPage() {
           </div>
         </div>
 
-        {/* Live insights feed */}
-        <div>
+        {/* Right column: voicemails above live insights */}
+        <div className="space-y-6">
+          <VoicemailsList limit={5} variant="card" />
+
           <div className="bg-card-bg rounded-lg border border-card-border">
             <div className="p-4 border-b border-card-border">
               <h3 className="font-semibold text-page-text">Live Insights</h3>

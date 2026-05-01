@@ -37,6 +37,10 @@ export function AnalyticsPage() {
   useDocumentTitle("Analytics");
   const { tenant } = useAuth();
   const [days, setDays] = useState(30);
+  // Name of the legend label currently being hovered, or null. Highlights
+  // the matching line and dims the rest so individual templates are easier
+  // to follow when several overlap.
+  const [hoveredTemplate, setHoveredTemplate] = useState<string | null>(null);
 
   const { data: trends, isLoading } = useQuery({
     queryKey: ["analytics", tenant?.id, days],
@@ -97,20 +101,70 @@ export function AnalyticsPage() {
           <ResponsiveContainer width="100%" height={400}>
             <LineChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-              <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+              {/*
+                Force evenly-spaced ticks. Recharts' default tick picker
+                drops some labels but keeps others, which produces visible
+                1-day vs 2-day gaps on a continuous date axis. We pick an
+                interval that aims for ~10 labels regardless of range.
+              */}
+              <XAxis
+                dataKey="date"
+                tick={{ fontSize: 13 }}
+                interval={Math.max(0, Math.ceil(chartData.length / 10) - 1)}
+                minTickGap={0}
+              />
+              <YAxis allowDecimals={false} tick={{ fontSize: 13 }} />
               <Tooltip />
-              <Legend />
-              {templateNames.map((name, i) => (
-                <Line
-                  key={name}
-                  type="monotone"
-                  dataKey={name}
-                  stroke={COLORS[i % COLORS.length]}
-                  strokeWidth={2}
-                  dot={{ r: 3 }}
-                />
-              ))}
+              <Legend
+                verticalAlign="bottom"
+                wrapperStyle={{ paddingTop: 16 }}
+                content={(props: {
+                  payload?: Array<{
+                    value?: string | number;
+                    color?: string;
+                    dataKey?: string | number;
+                  }>;
+                }) => (
+                  <div className="flex flex-wrap justify-center gap-x-8 gap-y-2 mt-2">
+                    {(props.payload ?? []).map((entry) => {
+                      const name =
+                        entry.value != null ? String(entry.value) : "";
+                      return (
+                        <div
+                          key={String(entry.dataKey ?? name)}
+                          onMouseEnter={() => setHoveredTemplate(name)}
+                          onMouseLeave={() => setHoveredTemplate(null)}
+                          className="flex items-center gap-2 cursor-default select-none text-sm text-page-text-secondary"
+                        >
+                          <span
+                            className="inline-block w-3.5 h-3.5 rounded-sm"
+                            style={{ backgroundColor: entry.color }}
+                          />
+                          <span>{name}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              />
+              {templateNames.map((name, i) => {
+                const dimmed =
+                  hoveredTemplate !== null && hoveredTemplate !== name;
+                const highlighted = hoveredTemplate === name;
+                return (
+                  <Line
+                    key={name}
+                    type="monotone"
+                    dataKey={name}
+                    stroke={COLORS[i % COLORS.length]}
+                    strokeWidth={highlighted ? 3 : 2}
+                    strokeOpacity={dimmed ? 0.15 : 1}
+                    dot={{ r: dimmed ? 2 : 3, opacity: dimmed ? 0.2 : 1 }}
+                    activeDot={{ r: highlighted ? 6 : 4 }}
+                    isAnimationActive={false}
+                  />
+                );
+              })}
             </LineChart>
           </ResponsiveContainer>
         )}

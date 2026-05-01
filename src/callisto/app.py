@@ -16,11 +16,13 @@ def create_app(config_class=Config) -> Flask:
 
     from callisto.api import bp as api_bp
     from callisto.api.admin import admin_bp
+    from callisto.api.demo import demo_bp
     from callisto.api.webhooks import webhooks_bp
     from callisto.auth.routes import auth_bp
 
     app.register_blueprint(api_bp, url_prefix="/api/v1")
     app.register_blueprint(admin_bp, url_prefix="/api/admin")
+    app.register_blueprint(demo_bp, url_prefix="/api/demo")
     app.register_blueprint(webhooks_bp)
     app.register_blueprint(auth_bp)
 
