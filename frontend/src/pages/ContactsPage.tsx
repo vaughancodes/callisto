@@ -13,6 +13,7 @@ import { PageLoadingSpinner } from "../components/LoadingSpinner";
 import { useAuth, getGoogleToken } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { apiFetch } from "../lib/api";
+import { ScrollLock } from "../hooks/useBodyScrollLock";
 
 interface ContactData {
   id: string;
@@ -152,10 +153,10 @@ export function ContactsPage() {
   }
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="p-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-6 mb-6">
         <h2 className="text-2xl font-bold text-page-text">Contacts</h2>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             onClick={handleGoogleSync}
             disabled={syncing}
@@ -199,7 +200,7 @@ export function ContactsPage() {
 
       {/* Contacts table */}
       <div className="bg-card-bg rounded-lg border border-card-border">
-          <table className="w-full">
+          <div className="overflow-x-auto"><table className="w-full min-w-[640px]">
             <thead>
               <tr className="border-b border-card-border text-left text-sm text-page-text-secondary">
                 <th className="p-4 font-medium">Name</th>
@@ -213,13 +214,13 @@ export function ContactsPage() {
             <tbody className="divide-y divide-page-divider">
               {data?.contacts.map((c) => (
                 <tr key={c.id} className="hover:bg-page-hover">
-                  <td className="p-4 text-sm font-medium text-page-text">
+                  <td className="p-4 text-sm font-medium text-page-text align-middle">
                     <Link to={`/contacts/${c.id}`} className="text-brand-sky hover:underline">
                       {c.name}
                     </Link>
                   </td>
-                  <td className="p-4 text-sm text-page-text-secondary">{c.company ?? "—"}</td>
-                  <td className="p-4 text-sm text-page-text-secondary">
+                  <td className="p-4 text-sm text-page-text-secondary align-middle">{c.company ?? "—"}</td>
+                  <td className="p-4 text-sm text-page-text-secondary align-middle">
                     {c.phone_numbers.length > 0
                       ? c.phone_numbers.map((p, i) => (
                           <span key={p}>
@@ -229,10 +230,10 @@ export function ContactsPage() {
                         ))
                       : "—"}
                   </td>
-                  <td className="p-4 text-sm text-page-text-secondary">
+                  <td className="p-4 text-sm text-page-text-secondary align-middle">
                     {c.email ? <EmailLink email={c.email} /> : "—"}
                   </td>
-                  <td className="p-4 text-sm text-page-text-secondary">
+                  <td className="p-4 text-sm text-page-text-secondary align-middle">
                     {c.google_contact_id ? (
                       <span className="text-xs px-1.5 py-0.5 bg-brand-sky/10 text-brand-sky rounded">
                         Google
@@ -243,19 +244,21 @@ export function ContactsPage() {
                       </span>
                     )}
                   </td>
-                  <td className="p-4 flex gap-2">
-                    <button
-                      onClick={() => { setEditing(c); setFormError(null); setShowForm(true); }}
-                      className="text-xs px-2.5 py-1 border border-brand-sky text-brand-sky rounded-md hover:bg-brand-sky/10 transition-colors"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => setDeleting(c)}
-                      className="text-xs px-2.5 py-1 border border-danger text-danger rounded-md hover:bg-danger/10 transition-colors"
-                    >
-                      Delete
-                    </button>
+                  <td className="p-4 align-middle">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => { setEditing(c); setFormError(null); setShowForm(true); }}
+                        className="text-xs px-2.5 py-1 border border-brand-sky text-brand-sky rounded-md hover:bg-brand-sky/10 transition-colors"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => setDeleting(c)}
+                        className="text-xs px-2.5 py-1 border border-danger text-danger rounded-md hover:bg-danger/10 transition-colors"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -267,7 +270,7 @@ export function ContactsPage() {
                 </tr>
               )}
             </tbody>
-          </table>
+          </table></div>
       </div>
 
       <ConfirmDialog
@@ -291,6 +294,7 @@ export function ContactsPage() {
       {/* Create/Edit modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <ScrollLock />
           <div className="bg-card-bg rounded-xl shadow-lg w-full max-w-lg p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-page-text">
@@ -345,6 +349,7 @@ export function ContactsPage() {
       {/* CSV Import modal */}
       {showImport && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <ScrollLock />
           <div className="bg-card-bg rounded-xl shadow-lg w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-page-text">Import CSV</h3>

@@ -1,4 +1,5 @@
 import { AlertTriangle } from "lucide-react";
+import { ScrollLock } from "../hooks/useBodyScrollLock";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -25,6 +26,7 @@ export function ConfirmDialog({
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+      <ScrollLock />
       <div className="bg-card-bg rounded-xl shadow-lg w-full max-w-md p-6">
         <div className="flex items-center gap-3 mb-4">
           <div className="p-2 bg-danger/15 rounded-full">

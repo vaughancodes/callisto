@@ -9,6 +9,7 @@ import { PageLoadingSpinner } from "../components/LoadingSpinner";
 import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { apiFetch } from "../lib/api";
+import { ScrollLock } from "../hooks/useBodyScrollLock";
 
 interface OrganizationData {
   id: string;
@@ -288,7 +289,7 @@ export function OrganizationSettingsPage() {
             New Tenant
           </button>
         </div>
-        <table className="w-full">
+        <div className="overflow-x-auto"><table className="w-full min-w-[640px]">
           <thead>
             <tr className="border-b border-card-border text-left text-sm text-page-text-secondary">
               <th className="p-4 font-medium">Name</th>
@@ -300,29 +301,31 @@ export function OrganizationSettingsPage() {
           <tbody className="divide-y divide-page-divider">
             {tenants?.map((t) => (
               <tr key={t.id} className="hover:bg-page-hover">
-                <td className="p-4 text-sm font-medium text-page-text">{t.name}</td>
-                <td className="p-4 text-sm text-page-text-secondary">{t.slug}</td>
-                <td className="p-4 text-sm text-page-text-secondary">
+                <td className="p-4 text-sm font-medium text-page-text align-middle">{t.name}</td>
+                <td className="p-4 text-sm text-page-text-secondary align-middle">{t.slug}</td>
+                <td className="p-4 text-sm text-page-text-secondary align-middle">
                   {t.description ?? "—"}
                 </td>
-                <td className="p-4 flex gap-2">
-                  <button
-                    onClick={() => {
-                      setEditingTenant(t);
-                      setEditTenantName(t.name);
-                      setEditTenantDescription(t.description ?? "");
-                      setFormError(null);
-                    }}
-                    className="text-xs px-2.5 py-1 border border-brand-sky text-brand-sky rounded-md hover:bg-brand-sky/10 transition-colors"
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => setRemovingTenant(t)}
-                    className="text-xs px-2.5 py-1 border border-danger text-danger rounded-md hover:bg-danger/10 transition-colors"
-                  >
-                    Delete
-                  </button>
+                <td className="p-4 align-middle">
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setEditingTenant(t);
+                        setEditTenantName(t.name);
+                        setEditTenantDescription(t.description ?? "");
+                        setFormError(null);
+                      }}
+                      className="text-xs px-2.5 py-1 border border-brand-sky text-brand-sky rounded-md hover:bg-brand-sky/10 transition-colors"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      onClick={() => setRemovingTenant(t)}
+                      className="text-xs px-2.5 py-1 border border-danger text-danger rounded-md hover:bg-danger/10 transition-colors"
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -334,7 +337,7 @@ export function OrganizationSettingsPage() {
               </tr>
             )}
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       {/* Number pool */}
@@ -346,7 +349,7 @@ export function OrganizationSettingsPage() {
             admins can then enable it for inbound and/or outbound use.
           </p>
         </div>
-        <table className="w-full">
+        <div className="overflow-x-auto"><table className="w-full min-w-[640px]">
           <thead>
             <tr className="border-b border-card-border text-left text-sm text-page-text-secondary">
               <th className="p-4 font-medium">Number</th>
@@ -356,8 +359,8 @@ export function OrganizationSettingsPage() {
           <tbody className="divide-y divide-page-divider">
             {numbers?.map((n) => (
               <tr key={n.id} className="hover:bg-page-hover">
-                <td className="p-4 text-sm font-mono text-page-text">{n.e164}</td>
-                <td className="p-4">
+                <td className="p-4 text-sm font-mono text-page-text align-middle">{n.e164}</td>
+                <td className="p-4 align-middle">
                   <Dropdown
                     value={n.tenant_id ?? ""}
                     onChange={(v) =>
@@ -386,7 +389,7 @@ export function OrganizationSettingsPage() {
               </tr>
             )}
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       {/* Org admins */}
@@ -404,7 +407,7 @@ export function OrganizationSettingsPage() {
             Add Admin
           </button>
         </div>
-        <table className="w-full">
+        <div className="overflow-x-auto"><table className="w-full min-w-[640px]">
           <thead>
             <tr className="border-b border-card-border text-left text-sm text-page-text-secondary">
               <th className="p-4 font-medium">Name</th>
@@ -415,16 +418,16 @@ export function OrganizationSettingsPage() {
           <tbody className="divide-y divide-page-divider">
             {admins?.map((a) => (
               <tr key={a.user_id} className="hover:bg-page-hover">
-                <td className="p-4 text-sm font-medium text-page-text">
+                <td className="p-4 text-sm font-medium text-page-text align-middle">
                   <span className="inline-flex items-center gap-1.5">
                     <Shield className="w-3.5 h-3.5 text-accent-lavender" />
                     {a.name}
                   </span>
                 </td>
-                <td className="p-4 text-sm text-page-text-secondary">
+                <td className="p-4 text-sm text-page-text-secondary align-middle">
                   <EmailLink email={a.email} />
                 </td>
-                <td className="p-4">
+                <td className="p-4 align-middle">
                   <button
                     onClick={() => setRemovingAdmin(a)}
                     className="text-xs px-2.5 py-1 border border-danger text-danger rounded-md hover:bg-danger/10 transition-colors"
@@ -442,7 +445,7 @@ export function OrganizationSettingsPage() {
               </tr>
             )}
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       <ConfirmDialog
@@ -469,6 +472,7 @@ export function OrganizationSettingsPage() {
       {/* Add admin modal */}
       {showAddAdmin && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <ScrollLock />
           <div className="bg-card-bg rounded-xl shadow-lg w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-page-text">
@@ -533,6 +537,7 @@ export function OrganizationSettingsPage() {
       {/* Edit tenant modal */}
       {editingTenant && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <ScrollLock />
           <div className="bg-card-bg rounded-xl shadow-lg w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-page-text">
@@ -637,6 +642,7 @@ export function OrganizationSettingsPage() {
       {/* Create tenant modal */}
       {showCreateTenant && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <ScrollLock />
           <div className="bg-card-bg rounded-xl shadow-lg w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-page-text">

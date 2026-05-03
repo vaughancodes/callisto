@@ -317,7 +317,15 @@ def templates(tenant_id):
 def contacts(tenant_id):
     page = request.args.get("page", 1, type=int)
     per_page = request.args.get("per_page", 50, type=int)
+    q = (request.args.get("q") or "").strip().lower()
     items = list_contacts(tenant_id)
+    if q:
+        def _match(c: dict) -> bool:
+            return any(
+                q in (c.get(k) or "").lower()
+                for k in ("name", "company", "email")
+            )
+        items = [c for c in items if _match(c)]
     start = (page - 1) * per_page
     end = start + per_page
     return jsonify({

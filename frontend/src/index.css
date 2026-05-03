@@ -48,6 +48,10 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* Page-bg on html + body so iOS rubber-band / Android overscroll
+     reveals the theme background, not white. */
+  background-color: var(--color-page-bg);
+  color: var(--color-page-text);
 }
 
 .dark {

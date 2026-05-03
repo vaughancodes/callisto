@@ -1,13 +1,15 @@
 /**
  * Format a date string in the user's local timezone with abbreviation and UTC offset.
- * e.g. "Apr 12, 2026, 6:02 PM EST (UTC-5)"
+ * e.g. "Apr 12, 2026 · 6:02 PM EST (UTC-5)"
  */
 export function formatDateTime(iso: string): string {
   const date = new Date(iso);
-  const formatted = date.toLocaleString(undefined, {
+  const datePart = date.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",
     year: "numeric",
+  });
+  const timePart = date.toLocaleTimeString(undefined, {
     hour: "numeric",
     minute: "2-digit",
   });
@@ -19,7 +21,7 @@ export function formatDateTime(iso: string): string {
   const hours = Math.floor(Math.abs(offset) / 60);
   const minutes = Math.abs(offset) % 60;
   const utc = minutes ? `UTC${sign}${hours}:${minutes.toString().padStart(2, "0")}` : `UTC${sign}${hours}`;
-  return `${formatted} ${tzAbbr} (${utc})`;
+  return `${datePart} · ${timePart} ${tzAbbr} (${utc})`;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -44,4 +46,17 @@ export function formatInsightSource(source: string): string {
 
 export function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+const DIAL_STATUS_LABELS: Record<string, string> = {
+  "no-answer": "Not answered",
+  busy: "Line was busy",
+  failed: "Call failed",
+  canceled: "Canceled",
+  completed: "Picked up",
+};
+
+/** Humanize a Twilio DialCallStatus value for display. */
+export function formatDialStatus(status: string): string {
+  return DIAL_STATUS_LABELS[status] ?? capitalize(status.replace(/[-_]/g, " "));
 }

@@ -113,7 +113,7 @@ export function CallListItem({
             toggleExpand();
           }
         }}
-        className="flex items-center gap-3 p-4 hover:bg-page-hover transition-colors cursor-pointer"
+        className="flex items-center flex-wrap gap-x-3 gap-y-2 p-3 sm:p-4 hover:bg-page-hover transition-colors cursor-pointer"
       >
         {/* Expand arrow */}
         <button
@@ -150,26 +150,34 @@ export function CallListItem({
         )}
 
 
-        {/* Main info */}
+        {/* Main info. On narrow viewports we collapse aggressively:
+            secondary metadata (company, friendly name, phone-when-contact-known)
+            moves out of the row entirely and is visible only in the
+            expanded section. The row stays readable at ~320px. */}
         <div className="flex-1 min-w-0">
           {showDateAsTitle ? (
             <>
-              <p className="text-sm font-medium text-page-text">
+              <p className="text-sm font-medium text-page-text truncate">
                 {formatDateTime(call.started_at)}
               </p>
-              <div className="flex items-center gap-1.5 mt-0.5 text-xs text-page-text-secondary">
+              <div className="flex items-center gap-1.5 mt-0.5 text-xs text-page-text-secondary min-w-0">
                 <DirectionIcon direction={call.direction} />
                 {call.our_number_friendly_name && (
-                  <span>{call.our_number_friendly_name} &middot;</span>
+                  <span className="hidden md:inline truncate">
+                    {call.our_number_friendly_name} &middot;
+                  </span>
                 )}
-                <span onClick={(e) => e.stopPropagation()}>
+                <span
+                  onClick={(e) => e.stopPropagation()}
+                  className="truncate"
+                >
                   <PhoneLink number={call.other_party_number ?? call.caller_number} />
                 </span>
               </div>
             </>
           ) : (
             <>
-              <p className="text-sm font-medium text-page-text">
+              <p className="text-sm font-medium text-page-text truncate">
                 {call.contact_name ? (
                   <>
                     {call.contact_id ? (
@@ -183,8 +191,13 @@ export function CallListItem({
                     ) : (
                       call.contact_name
                     )}
-                    <span className="text-page-text-muted font-normal ml-2"
-                          onClick={(e) => e.stopPropagation()}>
+                    {/* Show the raw number next to the name only on
+                        wider screens — too much horizontal noise on
+                        phones. */}
+                    <span
+                      className="hidden md:inline text-page-text-muted font-normal ml-2"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <PhoneLink number={call.other_party_number ?? call.caller_number} />
                     </span>
                   </>
@@ -194,15 +207,21 @@ export function CallListItem({
                   </span>
                 )}
               </p>
-              <div className="flex items-center gap-1.5 mt-0.5 text-xs text-page-text-secondary">
+              <div className="flex items-center gap-1.5 mt-0.5 text-xs text-page-text-secondary min-w-0">
                 {call.contact_company && (
-                  <span>{call.contact_company} &middot;</span>
+                  <span className="hidden sm:inline truncate">
+                    {call.contact_company} &middot;
+                  </span>
                 )}
                 <DirectionIcon direction={call.direction} />
                 {call.our_number_friendly_name && (
-                  <span>{call.our_number_friendly_name} &middot;</span>
+                  <span className="hidden md:inline truncate">
+                    {call.our_number_friendly_name} &middot;
+                  </span>
                 )}
-                <span>{formatDateTime(call.started_at)}</span>
+                <span className="truncate">
+                  {formatDateTime(call.started_at)}
+                </span>
               </div>
             </>
           )}
@@ -224,13 +243,18 @@ export function CallListItem({
           </div>
         )}
 
-        {/* Notes indicator */}
+        {/* Notes indicator — hidden on phones; the "Notes" label still
+            shows in the expanded section. */}
         {call.notes && (
-          <StickyNote className="w-3.5 h-3.5 text-warning shrink-0" title="Has notes" />
+          <StickyNote
+            className="hidden sm:inline w-3.5 h-3.5 text-warning shrink-0"
+            title="Has notes"
+          />
         )}
 
-        {/* Status + duration */}
-        <div className="text-right shrink-0">
+        {/* Status + duration. ml-auto on mobile pulls the badge to the
+            right edge of whichever wrapped row it lands on. */}
+        <div className="text-right shrink-0 ml-auto sm:ml-0">
           <span
             className={`inline-block px-2 py-0.5 text-xs rounded-full ${
               call.status === "active"

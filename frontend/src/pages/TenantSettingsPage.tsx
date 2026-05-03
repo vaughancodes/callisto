@@ -21,6 +21,7 @@ import { PageLoadingSpinner } from "../components/LoadingSpinner";
 import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { apiFetch } from "../lib/api";
+import { ScrollLock } from "../hooks/useBodyScrollLock";
 
 interface TenantSettings {
   id: string;
@@ -162,6 +163,7 @@ function CredentialRevealModal({
   const [acknowledged, setAcknowledged] = useState(false);
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]">
+      <ScrollLock />
       <div className="bg-card-bg rounded-xl shadow-lg w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center gap-3 mb-3">
           <div className="p-2 bg-warning/15 rounded-full">
@@ -539,7 +541,7 @@ export function TenantSettingsPage() {
             inbound call routing, and SIP device credentials.
           </p>
         </div>
-        <table className="w-full">
+        <div className="overflow-x-auto"><table className="w-full min-w-[640px]">
           <thead>
             <tr className="border-b border-card-border text-left text-sm text-page-text-secondary">
               <th className="p-4 font-medium">Number</th>
@@ -551,11 +553,11 @@ export function TenantSettingsPage() {
           <tbody className="divide-y divide-page-divider">
             {phoneNumbers?.map((p) => (
               <tr key={p.id} className="hover:bg-page-hover">
-                <td className="p-4 text-sm font-mono text-page-text">{p.e164}</td>
-                <td className="p-4 text-sm text-page-text-secondary">
+                <td className="p-4 text-sm font-mono text-page-text align-middle">{p.e164}</td>
+                <td className="p-4 text-sm text-page-text-secondary align-middle">
                   {p.friendly_name ?? "—"}
                 </td>
-                <td className="p-4">
+                <td className="p-4 align-middle">
                   <div className="flex flex-wrap gap-1.5">
                     {p.inbound_enabled && (
                       <span className="text-xs px-2 py-0.5 rounded-full bg-brand-sky/10 text-brand-sky">
@@ -579,7 +581,7 @@ export function TenantSettingsPage() {
                     )}
                   </div>
                 </td>
-                <td className="p-4">
+                <td className="p-4 align-middle">
                   <button
                     onClick={() => {
                       setEditingNumber(p);
@@ -607,7 +609,7 @@ export function TenantSettingsPage() {
               </tr>
             )}
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       {/* Voicemail greeting */}
@@ -685,7 +687,7 @@ export function TenantSettingsPage() {
             Add Member
           </button>
         </div>
-        <table className="w-full">
+        <div className="overflow-x-auto"><table className="w-full min-w-[640px]">
           <thead>
             <tr className="border-b border-card-border text-left text-sm text-page-text-secondary">
               <th className="p-4 font-medium">Name</th>
@@ -697,13 +699,13 @@ export function TenantSettingsPage() {
           <tbody className="divide-y divide-page-divider">
             {members?.map((m) => (
               <tr key={m.user_id} className="hover:bg-page-hover">
-                <td className="p-4 text-sm font-medium text-page-text">
+                <td className="p-4 text-sm font-medium text-page-text align-middle">
                   {m.name}
                 </td>
-                <td className="p-4 text-sm text-page-text-secondary">
+                <td className="p-4 text-sm text-page-text-secondary align-middle">
                   <EmailLink email={m.email} />
                 </td>
-                <td className="p-4">
+                <td className="p-4 align-middle">
                   {m.is_admin ? (
                     <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-accent-lavender/15 text-accent-lavender rounded-full">
                       <Shield className="w-3 h-3" />
@@ -713,28 +715,30 @@ export function TenantSettingsPage() {
                     <span className="text-xs text-page-text-muted">Member</span>
                   )}
                 </td>
-                <td className="p-4 flex gap-3">
-                  <button
-                    onClick={() => {
-                      if (m.is_admin) {
-                        setDemotingAdmin(m);
-                      } else {
-                        toggleAdmin.mutate({
-                          userId: m.user_id,
-                          isAdmin: true,
-                        });
-                      }
-                    }}
-                    className="text-xs px-2.5 py-1 border border-brand-sky text-brand-sky rounded-md hover:bg-brand-sky/10 transition-colors"
-                  >
-                    {m.is_admin ? "Remove Admin" : "Make Admin"}
-                  </button>
-                  <button
-                    onClick={() => setRemovingMember(m)}
-                    className="text-xs px-2.5 py-1 border border-danger text-danger rounded-md hover:bg-danger/10 transition-colors"
-                  >
-                    <Trash2 className="w-3 h-3 inline" /> Remove
-                  </button>
+                <td className="p-4 align-middle">
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => {
+                        if (m.is_admin) {
+                          setDemotingAdmin(m);
+                        } else {
+                          toggleAdmin.mutate({
+                            userId: m.user_id,
+                            isAdmin: true,
+                          });
+                        }
+                      }}
+                      className="text-xs px-2.5 py-1 border border-brand-sky text-brand-sky rounded-md hover:bg-brand-sky/10 transition-colors"
+                    >
+                      {m.is_admin ? "Remove Admin" : "Make Admin"}
+                    </button>
+                    <button
+                      onClick={() => setRemovingMember(m)}
+                      className="text-xs px-2.5 py-1 border border-danger text-danger rounded-md hover:bg-danger/10 transition-colors"
+                    >
+                      <Trash2 className="w-3 h-3 inline" /> Remove
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -746,7 +750,7 @@ export function TenantSettingsPage() {
               </tr>
             )}
           </tbody>
-        </table>
+        </table></div>
       </div>
 
       <ConfirmDialog
@@ -796,6 +800,7 @@ export function TenantSettingsPage() {
           phoneNumbers?.find((p) => p.id === editingNumber.id) ?? editingNumber;
         return (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <ScrollLock />
           <div className="bg-card-bg rounded-xl shadow-lg w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-page-text">
@@ -1068,6 +1073,7 @@ export function TenantSettingsPage() {
       {/* Add member modal */}
       {showAddMember && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <ScrollLock />
           <div className="bg-card-bg rounded-xl shadow-lg w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-page-text">

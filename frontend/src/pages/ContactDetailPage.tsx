@@ -93,7 +93,7 @@ export function ContactDetailPage() {
   );
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       {/* Header */}
       <div className="flex items-start gap-4 mb-6">
         <button
@@ -104,7 +104,7 @@ export function ContactDetailPage() {
         </button>
         <div className="flex-1">
           <h2 className="text-2xl font-bold text-page-text">{contact.name}</h2>
-          <div className="flex flex-wrap items-center gap-4 mt-2 text-sm text-page-text-secondary">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm text-page-text-secondary">
             {contact.company && (
               <span className="flex items-center gap-1.5">
                 <Building2 className="w-4 h-4" />

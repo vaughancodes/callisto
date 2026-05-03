@@ -6,7 +6,7 @@ import { useDocumentTitle } from "../hooks/useDocumentTitle";
 export function VoicemailsPage() {
   useDocumentTitle("Voicemails");
   return (
-    <div className="p-6 max-w-4xl">
+    <div className="p-4 sm:p-6 max-w-4xl">
       <div className="flex items-center gap-3 mb-6">
         <Link
           to="/"

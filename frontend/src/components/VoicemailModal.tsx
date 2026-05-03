@@ -5,8 +5,9 @@ import { Link } from "react-router-dom";
 import { PhoneLink } from "./LinkedContact";
 import { useActiveTranscriptChunk } from "../hooks/useActiveTranscriptChunk";
 import { useAuthedAudio } from "../hooks/useAuthedAudio";
+import { ScrollLock } from "../hooks/useBodyScrollLock";
 import { apiFetch } from "../lib/api";
-import { formatDateTime } from "../lib/format";
+import { formatDateTime, formatDialStatus } from "../lib/format";
 
 interface VoicemailTranscriptChunk {
   speaker: string;
@@ -81,6 +82,7 @@ export function VoicemailModal({ callId, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <ScrollLock />
       <div className="bg-card-bg rounded-xl shadow-lg w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
         <div className="p-4 border-b border-card-border flex items-center gap-3">
           <Voicemail className="w-5 h-5 text-accent-lavender shrink-0" />
@@ -125,7 +127,7 @@ export function VoicemailModal({ callId, onClose }: Props) {
                 {voicemail.dial_status && (
                   <span>
                     <span className="text-page-text-muted">Reason:</span>{" "}
-                    {voicemail.dial_status}
+                    {formatDialStatus(voicemail.dial_status)}
                   </span>
                 )}
               </div>

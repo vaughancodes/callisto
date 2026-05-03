@@ -7,13 +7,14 @@ import {
   Info,
   LayoutDashboard,
   LogOut,
+  Menu,
   Moon,
   Shield,
   Sun,
   Users,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { Tooltip } from "../components/Tooltip";
 import { useAuth } from "../contexts/AuthContext";
 import { useTheme } from "../contexts/ThemeContext";
@@ -34,6 +35,10 @@ export function DashboardLayout() {
 
   const [showTenantPicker, setShowTenantPicker] = useState(false);
   const pickerRef = useRef<HTMLDivElement>(null);
+  // Below `lg`, the sidebar is a slide-in drawer toggled by a hamburger.
+  // Above `lg`, it's always visible and `sidebarOpen` is irrelevant.
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const location = useLocation();
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -46,6 +51,66 @@ export function DashboardLayout() {
       return () => document.removeEventListener("mousedown", onClick);
     }
   }, [showTenantPicker]);
+
+  // Saved Y offset used by the body-lock effect to restore scroll on
+  // drawer close. Hoisted into a ref so the navigation effect can zero
+  // it out before the lock's cleanup runs (otherwise the restore
+  // overrides the scroll-to-top we want on route change).
+  const lockedScrollYRef = useRef(0);
+
+  // Auto-close the mobile drawer on navigation, and reset scroll to
+  // the top so the new page doesn't open at the previous page's
+  // scroll offset (React Router preserves it by default).
+  useEffect(() => {
+    lockedScrollYRef.current = 0;
+    setSidebarOpen(false);
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
+
+  // ESC closes the drawer.
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSidebarOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [sidebarOpen]);
+
+  // Lock the page from scrolling while the drawer is open. iOS Safari
+  // ignores `overflow: hidden` on the body for touch scrolling, so we
+  // also pin the body with `position: fixed` and the negative current
+  // scroll offset, then restore the scroll position on close.
+  // The pathname effect zeros lockedScrollYRef so navigation lands at
+  // the top of the new page rather than restoring the prior offset.
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const body = document.body;
+    lockedScrollYRef.current = window.scrollY;
+    const prev = {
+      overflow: body.style.overflow,
+      position: body.style.position,
+      top: body.style.top,
+      left: body.style.left,
+      right: body.style.right,
+      width: body.style.width,
+    };
+    body.style.overflow = "hidden";
+    body.style.position = "fixed";
+    body.style.top = `-${lockedScrollYRef.current}px`;
+    body.style.left = "0";
+    body.style.right = "0";
+    body.style.width = "100%";
+    return () => {
+      body.style.overflow = prev.overflow;
+      body.style.position = prev.position;
+      body.style.top = prev.top;
+      body.style.left = prev.left;
+      body.style.right = prev.right;
+      body.style.width = prev.width;
+      window.scrollTo(0, lockedScrollYRef.current);
+    };
+  }, [sidebarOpen]);
 
   const navItems = [
     { to: "/", icon: LayoutDashboard, label: "Dashboard" },
@@ -74,25 +139,43 @@ export function DashboardLayout() {
   };
 
   return (
-    <div className="flex h-screen bg-page-bg">
-      {/* Sidebar — always dark, uses dark palette colors directly */}
-      <aside className="w-64 bg-surface-dark dark:bg-surface-elevated flex flex-col">
-        <div className="px-3 py-4 border-b border-[#252a36]">
-          <div className="flex items-center gap-3 min-w-0">
+    <div className="flex min-h-screen bg-page-bg">
+      {/* Mobile drawer backdrop */}
+      {sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+          className="fixed inset-0 bg-black/50 z-30 lg:hidden"
+        />
+      )}
+
+      {/* Sidebar — always dark, uses dark palette colors directly. On
+          screens below lg it's a slide-in drawer (fixed). On lg+ it
+          becomes a sticky sidebar at the top of its column so the body
+          scrolls naturally underneath; that lets mobile browsers
+          collapse their URL bar on scroll instead of getting trapped
+          inside an inner overflow:auto container. */}
+      <aside
+        className={`fixed lg:sticky lg:top-0 top-0 left-0 h-[100dvh] z-40 w-64 lg:self-start bg-surface-dark dark:bg-surface-elevated flex flex-col transition-transform duration-200 ease-out lg:translate-x-0 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        }`}
+      >
+        <div className="px-3 py-3 border-b border-[#252a36]">
+          <div className="flex items-center gap-2 min-w-0">
             <img
               src="/callisto-icon-animated.svg"
               alt=""
-              className="w-10 h-10 shrink-0"
+              className="w-8 h-8 shrink-0"
             />
             <img
               src="/callisto-wordmark-dark.svg"
               alt="Callisto"
-              className="h-6 min-w-0 max-w-full object-contain"
+              className="h-5 min-w-0 max-w-full object-contain"
             />
           </div>
 
           {/* Tenant switcher */}
-          <div className="mt-3 relative" ref={pickerRef}>
+          <div className="mt-2 relative" ref={pickerRef}>
             {canSwitchTenant ? (
               <button
                 onClick={() => setShowTenantPicker((v) => !v)}
@@ -163,7 +246,7 @@ export function DashboardLayout() {
           </div>
         </div>
 
-        <nav className="flex-1 p-3 space-y-1">
+        <nav className="flex-1 min-h-0 p-3 space-y-1 overflow-y-auto">
           {tenant &&
             navItems.map(({ to, icon: Icon, label }) => (
               <NavLink
@@ -171,7 +254,7 @@ export function DashboardLayout() {
                 to={to}
                 end={to === "/"}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                  `flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm transition-colors ${
                     isActive
                       ? "bg-brand-sky/15 text-accent-light"
                       : "text-[#94a3b8] hover:bg-white/5 hover:text-[#e2e8f0]"
@@ -187,7 +270,7 @@ export function DashboardLayout() {
             <NavLink
               to="/tenant-settings"
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                `flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm transition-colors ${
                   isActive
                     ? "bg-brand-sky/15 text-accent-light"
                     : "text-[#94a3b8] hover:bg-white/5 hover:text-[#e2e8f0]"
@@ -213,7 +296,7 @@ export function DashboardLayout() {
             <NavLink
               to="/organization-settings"
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                `flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm transition-colors ${
                   isActive
                     ? "bg-accent-lavender/15 text-accent-lavender"
                     : "text-accent-lavender/60 hover:bg-white/5 hover:text-accent-lavender"
@@ -229,7 +312,7 @@ export function DashboardLayout() {
             <NavLink
               to="/admin"
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                `flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm transition-colors ${
                   isActive
                     ? "bg-accent-lavender/15 text-accent-lavender"
                     : "text-accent-lavender/60 hover:bg-white/5 hover:text-accent-lavender"
@@ -289,7 +372,29 @@ export function DashboardLayout() {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 min-w-0">
+        {/* Mobile-only top bar with hamburger + small wordmark. Hidden
+            on lg+ where the sidebar is always visible. */}
+        <div className="lg:hidden sticky top-0 z-20 flex items-center gap-3 px-4 py-3 bg-surface-dark text-white border-b border-[#252a36]">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open menu"
+            className="p-1.5 -ml-1 hover:bg-white/10 rounded transition-colors"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <img
+            src="/callisto-icon-animated.svg"
+            alt=""
+            className="w-7 h-7 shrink-0"
+          />
+          <img
+            src="/callisto-wordmark-dark.svg"
+            alt="Callisto"
+            className="h-5 min-w-0 max-w-[140px] object-contain"
+          />
+        </div>
+
         {isDemoMode() && (
           <div className="bg-accent-lavender/15 border-b border-accent-lavender/40 px-6 py-2 flex items-center gap-3 text-sm">
             <Info className="w-4 h-4 text-accent-lavender shrink-0" />

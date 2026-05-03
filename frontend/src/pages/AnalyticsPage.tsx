@@ -73,7 +73,7 @@ export function AnalyticsPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-page-text">Analytics</h2>
         <Dropdown

@@ -6,6 +6,7 @@ import { Dropdown } from "../components/Dropdown";
 import { PageLoadingSpinner } from "../components/LoadingSpinner";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { apiFetch } from "../lib/api";
+import { ScrollLock } from "../hooks/useBodyScrollLock";
 
 interface TenantData {
   id: string;
@@ -227,7 +228,7 @@ export function AdminPage() {
           </button>
         </div>
         <div className="bg-card-bg rounded-lg border border-card-border">
-          <table className="w-full">
+          <div className="overflow-x-auto"><table className="w-full min-w-[640px]">
             <thead>
               <tr className="border-b border-card-border text-left text-sm text-page-text-secondary">
                 <th className="p-4 font-medium">Name</th>
@@ -240,27 +241,29 @@ export function AdminPage() {
             <tbody className="divide-y divide-page-divider">
               {organizations?.map((o) => (
                 <tr key={o.id} className="hover:bg-page-hover">
-                  <td className="p-4 text-sm font-medium text-page-text">{o.name}</td>
-                  <td className="p-4 text-sm text-page-text-secondary">{o.slug}</td>
-                  <td className="p-4 text-sm text-page-text-secondary">{o.tenant_count}</td>
-                  <td className="p-4 text-sm text-page-text-secondary">{o.phone_number_count}</td>
-                  <td className="p-4 flex gap-2">
-                    <button
-                      onClick={() => {
-                        setEditingOrg(o);
-                        setEditOrgName(o.name);
-                        setEditOrgError(null);
-                      }}
-                      className="text-xs px-2.5 py-1 border border-brand-sky text-brand-sky rounded-md hover:bg-brand-sky/10 transition-colors"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => setDeletingOrg(o)}
-                      className="text-xs px-2.5 py-1 border border-danger text-danger rounded-md hover:bg-danger/10 transition-colors"
-                    >
-                      Delete
-                    </button>
+                  <td className="p-4 text-sm font-medium text-page-text align-middle">{o.name}</td>
+                  <td className="p-4 text-sm text-page-text-secondary align-middle">{o.slug}</td>
+                  <td className="p-4 text-sm text-page-text-secondary align-middle">{o.tenant_count}</td>
+                  <td className="p-4 text-sm text-page-text-secondary align-middle">{o.phone_number_count}</td>
+                  <td className="p-4 align-middle">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setEditingOrg(o);
+                          setEditOrgName(o.name);
+                          setEditOrgError(null);
+                        }}
+                        className="text-xs px-2.5 py-1 border border-brand-sky text-brand-sky rounded-md hover:bg-brand-sky/10 transition-colors"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => setDeletingOrg(o)}
+                        className="text-xs px-2.5 py-1 border border-danger text-danger rounded-md hover:bg-danger/10 transition-colors"
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -272,7 +275,7 @@ export function AdminPage() {
                 </tr>
               )}
             </tbody>
-          </table>
+          </table></div>
         </div>
       </section>
 
@@ -303,7 +306,7 @@ export function AdminPage() {
                 : String(numbersError)}
             </div>
           ) : (
-            <table className="w-full">
+            <div className="overflow-x-auto"><table className="w-full min-w-[640px]">
               <thead>
                 <tr className="border-b border-card-border text-left text-sm text-page-text-secondary">
                   <th className="p-4 font-medium">Number</th>
@@ -314,11 +317,11 @@ export function AdminPage() {
               <tbody className="divide-y divide-page-divider">
                 {twilioNumbers?.map((n) => (
                   <tr key={n.sid} className="hover:bg-page-hover">
-                    <td className="p-4 text-sm font-mono text-page-text">{n.e164}</td>
-                    <td className="p-4 text-sm text-page-text-secondary">
+                    <td className="p-4 text-sm font-mono text-page-text align-middle">{n.e164}</td>
+                    <td className="p-4 text-sm text-page-text-secondary align-middle">
                       {n.friendly_name ?? "—"}
                     </td>
-                    <td className="p-4">
+                    <td className="p-4 align-middle">
                       <Dropdown
                         value={n.organization_id ?? ""}
                         onChange={(v) => handleNumberAssignment(n, v)}
@@ -341,7 +344,7 @@ export function AdminPage() {
                   </tr>
                 )}
               </tbody>
-            </table>
+            </table></div>
           )}
         </div>
       </section>
@@ -350,7 +353,7 @@ export function AdminPage() {
       <section>
         <h3 className="text-lg font-semibold text-page-text mb-4">Users</h3>
         <div className="bg-card-bg rounded-lg border border-card-border">
-          <table className="w-full">
+          <div className="overflow-x-auto"><table className="w-full min-w-[640px]">
             <thead>
               <tr className="border-b border-card-border text-left text-sm text-page-text-secondary">
                 <th className="p-4 font-medium">Name</th>
@@ -363,9 +366,9 @@ export function AdminPage() {
             <tbody className="divide-y divide-page-divider">
               {users?.map((u) => (
                 <tr key={u.id} className="hover:bg-page-hover">
-                  <td className="p-4 text-sm font-medium text-page-text">{u.name}</td>
-                  <td className="p-4 text-sm text-page-text-secondary">{u.email}</td>
-                  <td className="p-4">
+                  <td className="p-4 text-sm font-medium text-page-text align-middle">{u.name}</td>
+                  <td className="p-4 text-sm text-page-text-secondary align-middle">{u.email}</td>
+                  <td className="p-4 align-middle">
                     {u.tenant_name ? (
                       <span className="text-sm text-page-text">{u.tenant_name}</span>
                     ) : (
@@ -374,7 +377,7 @@ export function AdminPage() {
                       </span>
                     )}
                   </td>
-                  <td className="p-4">
+                  <td className="p-4 align-middle">
                     {u.is_superadmin && (
                       <span className="flex items-center gap-1 text-xs text-purple-600">
                         <Shield className="w-3 h-3" />
@@ -382,45 +385,48 @@ export function AdminPage() {
                       </span>
                     )}
                   </td>
-                  <td className="p-4 flex gap-2">
-                    <button
-                      onClick={() => setAssigningUser(u)}
-                      className="text-xs px-2.5 py-1 border border-brand-sky text-brand-sky rounded-md hover:bg-brand-sky/10 transition-colors"
-                    >
-                      Assign Tenant
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (u.is_superadmin) {
-                          setRemovingAdmin(u);
-                        } else {
-                          updateUser.mutate({
-                            id: u.id,
-                            is_superadmin: true,
-                          });
-                        }
-                      }}
-                      className="text-xs px-2.5 py-1 border border-accent-lavender text-accent-lavender rounded-md hover:bg-accent-lavender/10 transition-colors"
-                    >
-                      {u.is_superadmin ? "Remove Admin" : "Make Admin"}
-                    </button>
-                    <button
-                      onClick={() => setDeletingUser(u)}
-                      className="text-xs px-2.5 py-1 border border-danger text-danger rounded-md hover:bg-danger/10 transition-colors"
-                    >
-                      <Trash2 className="w-3 h-3" />
-                    </button>
+                  <td className="p-4 align-middle">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setAssigningUser(u)}
+                        className="text-xs px-2.5 py-1 border border-brand-sky text-brand-sky rounded-md hover:bg-brand-sky/10 transition-colors"
+                      >
+                        Assign Tenant
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (u.is_superadmin) {
+                            setRemovingAdmin(u);
+                          } else {
+                            updateUser.mutate({
+                              id: u.id,
+                              is_superadmin: true,
+                            });
+                          }
+                        }}
+                        className="text-xs px-2.5 py-1 border border-accent-lavender text-accent-lavender rounded-md hover:bg-accent-lavender/10 transition-colors"
+                      >
+                        {u.is_superadmin ? "Remove Admin" : "Make Admin"}
+                      </button>
+                      <button
+                        onClick={() => setDeletingUser(u)}
+                        className="text-xs px-2.5 py-1 border border-danger text-danger rounded-md hover:bg-danger/10 transition-colors"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
       </section>
 
       {/* Edit Organization Modal */}
       {editingOrg && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <ScrollLock />
           <div className="bg-card-bg rounded-xl shadow-lg w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-page-text">
@@ -487,6 +493,7 @@ export function AdminPage() {
       {/* Create Organization Modal */}
       {showOrgForm && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <ScrollLock />
           <div className="bg-card-bg rounded-xl shadow-lg w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-page-text">
@@ -596,6 +603,7 @@ export function AdminPage() {
 
       {assigningUser && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <ScrollLock />
           <div className="bg-card-bg rounded-xl shadow-lg w-full max-w-sm p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-page-text">

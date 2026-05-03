@@ -222,9 +222,9 @@ export function CallDetailPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       {/* Header */}
-      <div className="flex items-start gap-4 mb-6">
+      <div className="flex flex-wrap items-start gap-3 sm:gap-4 mb-6">
         <button
           onClick={() => navigate(-1)}
           className="p-2 hover:bg-page-hover rounded-lg transition-colors shrink-0 mt-0.5"
@@ -250,27 +250,32 @@ export function CallDetailPage() {
               "Loading..."
             )}
           </h2>
-          <div className="flex items-center gap-2 mt-0.5">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
             {call?.contact_name && (
-              <span className="text-sm text-page-text-secondary">
+              <span className="text-sm text-page-text-secondary truncate max-w-full">
                 <PhoneLink number={otherPartyNumber} />
               </span>
             )}
             {call?.contact_company && (
-              <span className="text-sm text-page-text-muted">
-                &middot; {call.contact_company}
+              <span className="text-sm text-page-text-muted truncate max-w-full">
+                <span className="hidden sm:inline">&middot; </span>
+                {call.contact_company}
               </span>
             )}
           </div>
-          <p className="text-sm text-page-text-secondary mt-0.5">
+          <p className="text-sm text-page-text-secondary mt-0.5 break-words">
             {direction} call &middot; {call ? formatStatus(call.status) : ""}
             {call?.duration_sec != null &&
               ` · ${Math.floor(call.duration_sec / 60)}m ${call.duration_sec % 60}s`}
-            {call?.started_at && ` · ${formatDateTime(call.started_at)}`}
           </p>
+          {call?.started_at && (
+            <p className="text-sm text-page-text-secondary mt-0.5 break-words">
+              {formatDateTime(call.started_at)}
+            </p>
+          )}
         </div>
         {(call?.status === "completed" || call?.status === "processing") && (
-          <div className="flex flex-col items-end gap-1 shrink-0">
+          <div className="flex flex-col items-end gap-1 shrink-0 w-full sm:w-auto">
             <button
               onClick={() => reanalyze.mutate()}
               disabled={reanalyze.isPending || call?.status === "processing"}

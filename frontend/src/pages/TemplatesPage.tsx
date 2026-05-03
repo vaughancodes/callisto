@@ -8,6 +8,7 @@ import { PageLoadingSpinner } from "../components/LoadingSpinner";
 import { useAuth } from "../contexts/AuthContext";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { apiFetch } from "../lib/api";
+import { ScrollLock } from "../hooks/useBodyScrollLock";
 
 interface Template {
   id: string;
@@ -140,9 +141,9 @@ export function TemplatesPage() {
   }
 
   return (
-    <div className="p-6">
-      <div className="flex items-start justify-between gap-6 mb-6">
-        <div className="max-w-2xl">
+    <div className="p-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 sm:gap-6 mb-6">
+        <div className="max-w-2xl min-w-0">
           <h2 className="text-2xl font-bold text-page-text">Insight Templates</h2>
           <p className="text-sm text-page-text-secondary mt-2">
             Templates define what Callisto looks for in calls. Each one is a
@@ -151,7 +152,7 @@ export function TemplatesPage() {
             mentions of a specific topic.
           </p>
         </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex flex-wrap gap-2 sm:shrink-0">
           <button
             onClick={() => setShowCategories(true)}
             className="flex items-center gap-2 px-3 py-2 bg-card-bg border border-card-border rounded-lg hover:bg-page-hover text-sm text-page-text"
@@ -175,7 +176,8 @@ export function TemplatesPage() {
 
       {/* Template list */}
       <div className="bg-card-bg rounded-lg border border-card-border">
-          <table className="w-full">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead>
               <tr className="border-b border-card-border text-left text-sm text-page-text-secondary">
                 <th className="p-4 font-medium">Name</th>
@@ -188,7 +190,7 @@ export function TemplatesPage() {
             <tbody className="divide-y divide-page-divider">
               {templates?.map((t) => (
                 <tr key={t.id} className="hover:bg-page-hover">
-                  <td className="p-4">
+                  <td className="p-4 align-middle">
                     <p className="text-sm font-medium text-page-text">
                       {t.name}
                     </p>
@@ -198,8 +200,8 @@ export function TemplatesPage() {
                       </p>
                     )}
                   </td>
-                  <td className="p-4 text-sm text-page-text-secondary">{t.category}</td>
-                  <td className="p-4">
+                  <td className="p-4 text-sm text-page-text-secondary align-middle">{t.category}</td>
+                  <td className="p-4 align-middle">
                     <span
                       className={`text-xs px-2 py-0.5 rounded-full ${
                         t.severity === "critical"
@@ -212,10 +214,10 @@ export function TemplatesPage() {
                       {t.severity}
                     </span>
                   </td>
-                  <td className="p-4 text-sm text-page-text-secondary">
+                  <td className="p-4 text-sm text-page-text-secondary align-middle">
                     {t.is_realtime ? "Yes" : "No"}
                   </td>
-                  <td className="p-4">
+                  <td className="p-4 align-middle">
                     <div className="flex gap-2">
                       <button
                         onClick={() => {
@@ -252,6 +254,7 @@ export function TemplatesPage() {
               ))}
             </tbody>
           </table>
+        </div>
       </div>
 
       <ConfirmDialog
@@ -275,6 +278,7 @@ export function TemplatesPage() {
       {/* Create/Edit modal */}
       {showForm && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+          <ScrollLock />
           <div className="bg-card-bg rounded-xl shadow-lg w-full max-w-lg p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-page-text">
@@ -561,6 +565,7 @@ function CategoriesModal({
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+      <ScrollLock />
       <div className="bg-card-bg rounded-xl shadow-lg w-full max-w-md p-6">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold text-page-text">
